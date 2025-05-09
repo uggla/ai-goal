@@ -1,6 +1,5 @@
-use std::process::Command;
-
-use anyhow::Context;
+use ai_goal::check_all_system_requirements;
+use anyhow::Result;
 use clap::Parser;
 use simple_logger::SimpleLogger;
 
@@ -13,26 +12,11 @@ struct Cli {
 
     /// Input file argument (required)
     input_file: String,
+    // TODO: Add language
 }
 
-fn check_input_file(input_file: &str) -> anyhow::Result<()> {
-    Ok(())
-}
-
-fn check_external_tools() -> anyhow::Result<()> {
-    let output = Command::new("ffmepeg")
-        .arg("-version")
-        .output()
-        .context("ffmepeg not found")?;
-
-    // if !output.status.success() {
-    //     error_chain::bail!("Command executed with failing error code");
-    // }
-    //
-    Ok(())
-}
-
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     SimpleLogger::new()
@@ -46,25 +30,12 @@ fn main() -> anyhow::Result<()> {
         .init()?;
 
     log::debug!("cli arguments = {:#?}", &cli);
-
-    check_external_tools()?;
-    check_input_file(&cli.input_file)?;
+    match check_all_system_requirements().await {
+        Ok(_) => println!("System configuration validated successfully."),
+        Err(e) => {
+            eprintln!("Configuration error: {:?}", e);
+            std::process::exit(1);
+        }
+    }
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::*;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn test_fake() {
-        assert_eq!(1, 1);
-    }
-
-    #[test]
-    fn test_check_external_tools() {
-        assert!(check_external_tools().is_ok());
-    }
 }
