@@ -242,22 +242,22 @@ pub async fn check_all_system_requirements() -> Result<()> {
     Ok(())
 }
 
-pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Result<PathBuf, String> {
+pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Result<PathBuf> {
     let input_path = input.as_ref();
     let output_base = output_dir.as_ref().join("audio");
 
     if !input_path.exists() {
-        return Err(format!("Fichier introuvable: {}", input_path.display()));
+        bail!("Input file does not exist: {}", input_path.display());
     }
 
     // Créer le dossier audio/ si nécessaire
     fs::create_dir_all(&output_base)
-        .map_err(|e| format!("Impossible de créer le dossier de sortie: {}", e))?;
+        .with_context(|| format!("Cannot create output folder {}", output_base.display()))?;
 
-    let input_filename = input_path
-        .file_stem()
-        .ok_or("Nom de fichier invalide")?
-        .to_string_lossy();
+    let input_filename = match input_path.file_stem() {
+        Some(filename) => filename.to_string_lossy(),
+        None => bail!("Invalid file name"),
+    };
 
     let output_path = output_base.join(format!("{}_mono16k.wav", input_filename));
 
@@ -275,10 +275,10 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Resul
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|e| format!("Erreur lors de l'exécution de ffmpeg: {}", e))?;
+        .context("Failed to execute ffmpeg")?;
 
     if !status.success() {
-        return Err(format!("ffmpeg a échoué avec le statut: {}", status));
+        bail!("ffmpeg fails with status: {}", status);
     }
 
     Ok(output_path)

@@ -34,9 +34,9 @@ async fn main() -> Result<()> {
 
     log::debug!("cli arguments = {:#?}", &cli);
     match check_all_system_requirements().await {
-        Ok(_) => println!("System configuration validated successfully."),
+        Ok(_) => println!("✅ System configuration validated successfully."),
         Err(e) => {
-            eprintln!("Configuration error: {:?}", e);
+            eprintln!("❌ Configuration error: {:?}", e);
             std::process::exit(1);
         }
     }
