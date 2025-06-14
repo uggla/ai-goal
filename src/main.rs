@@ -1,7 +1,8 @@
-use ai_goal::check_all_system_requirements;
+use ai_goal::{check_all_system_requirements, convert_to_wav_mono_16k, transcribe_audio};
 use anyhow::Result;
 use clap::Parser;
 use simple_logger::SimpleLogger;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -12,6 +13,8 @@ struct Cli {
 
     /// Input file argument (required)
     input_file: String,
+    /// Input file argument (required)
+    output_dir: String,
     // TODO: Add language
 }
 
@@ -37,5 +40,31 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     }
+
+    let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir) {
+        Ok(path) => {
+            println!("✅ Audio file converted : {}", path.display());
+            path
+        }
+        Err(e) => {
+            eprintln!("❌ Erreur : {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let model_path = "models/ggml-base.bin";
+    let model_name = "base";
+    let threads = 4;
+
+    let transcript = transcribe_audio(
+        audio_path,
+        PathBuf::from(&cli.output_dir),
+        PathBuf::from(model_path),
+        model_name,
+        threads,
+        None, // Some("fr"),
+    )?;
+    println!("Transcript saved to {}", transcript.display());
+
     Ok(())
 }
