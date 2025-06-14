@@ -7,6 +7,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
 
@@ -442,11 +443,34 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         );
 
         // Format the segment information as a string.
-        let line = format!("[{} - {}]: {}\n", start_timestamp, end_timestamp, segment);
+        // let line = format!(
+        //     "[{:.3} - {:.3}]: {}\n",
+        //     start_timestamp as f32 / 100.0,
+        //     end_timestamp as f32 / 100.0,
+        //     segment
+        // );
+
+        let start_timestamp = Duration::from_secs_f32(start_timestamp as f32 / 100.0);
+        let end_timestamp = Duration::from_secs_f32(end_timestamp as f32 / 100.0);
+        let line = format!(
+            "[{} - {}]: {}\n",
+            format_duration_hhmmss(start_timestamp),
+            format_duration_hhmmss(end_timestamp),
+            segment
+        );
 
         // Write the segment information to the file.
         file.write_all(line.as_bytes())
             .expect("failed to write to file");
     }
     Ok(transcript_path)
+}
+
+fn format_duration_hhmmss(d: Duration) -> String {
+    let secs = d.as_secs();
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
