@@ -303,7 +303,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     let mut context_param = WhisperContextParameters::default();
 
     // Enable DTW token level timestamp for known model by using model preset
-
     context_param.dtw_parameters.mode = match model_name {
         "tiny" => whisper_rs::DtwMode::ModelPreset {
             model_preset: whisper_rs::DtwModelPreset::Tiny,
@@ -316,31 +315,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         },
         _ => panic!("Model unknown"),
     };
-
-    //     context_param.dtw_parameters.mode = whisper_rs::DtwMode::ModelPreset {
-    //     model_preset: whisper_rs::DtwModelPreset::Tiny,
-    // };
-
-    // // Enable DTW token level timestamp for unknown model by providing custom aheads
-    // // see details https://github.com/ggerganov/whisper.cpp/pull/1485#discussion_r1519681143
-    // // values corresponds to ggml-base.en.bin, result will be the same as with DtwModelPreset::BaseEn
-    // let custom_aheads = [
-    //     (3, 1),
-    //     (4, 2),
-    //     (4, 3),
-    //     (4, 7),
-    //     (5, 1),
-    //     (5, 2),
-    //     (5, 4),
-    //     (5, 6),
-    // ]
-    // .map(|(n_text_layer, n_head)| whisper_rs::DtwAhead {
-    //     n_text_layer,
-    //     n_head,
-    // });
-    // context_param.dtw_parameters.mode = whisper_rs::DtwMode::Custom {
-    //     aheads: &custom_aheads,
-    // };
 
     let ctx = WhisperContext::new_with_params(model_path.to_str().unwrap(), context_param)
         .expect("failed to load model");
@@ -386,11 +360,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     let mut audio = vec![0.0f32; samples.len()];
     whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
 
-    // Convert audio to 16KHz mono f32 samples, as required by the model.
-    // These utilities are provided for convenience, but can be replaced with custom conversion logic.
-    // SIMD variants of these functions are also available on nightly Rust (see the docs).
-    // if channels == 2 {
-    // audio = whisper_rs::convert_stereo_to_mono_audio(&audio).expect("Conversion error");
     if channels != 1 {
         panic!(">1 channels unsupported");
     }
@@ -422,25 +391,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         let end_timestamp = state
             .full_get_segment_t1(i)
             .expect("failed to get end timestamp");
-
-        let first_token_dtw_ts = if let Ok(token_count) = state.full_n_tokens(i) {
-            if token_count > 0 {
-                if let Ok(token_data) = state.full_get_token_data(i, 0) {
-                    token_data.t_dtw
-                } else {
-                    -1i64
-                }
-            } else {
-                -1i64
-            }
-        } else {
-            -1i64
-        };
-        // Print the segment to stdout.
-        println!(
-            "[{} - {} ({})]: {}",
-            start_timestamp, end_timestamp, first_token_dtw_ts, segment
-        );
 
         // Format the segment information as a string.
         // let line = format!(
