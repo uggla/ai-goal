@@ -403,10 +403,11 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         .full_n_segments()
         .expect("failed to get number of segments");
     for i in 0..num_segments {
-        // Get the transcribed text and timestamps for the current segment.
-        let segment = state
-            .full_get_segment_text(i)
-            .expect("failed to get segment");
+        let segment = match state.full_get_segment_text(i) {
+            Ok(s) => s,
+            Err(_) => "<unreadable utf-8>".to_string(),
+        };
+
         let start_timestamp = state
             .full_get_segment_t0(i)
             .expect("failed to get start timestamp");
