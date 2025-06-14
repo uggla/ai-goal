@@ -20,7 +20,11 @@ struct ModelInfo {
 }
 
 // Define model URLs and expected filenames using the struct
-const MODEL_FILES: [ModelInfo; 2] = [
+const MODEL_FILES: [ModelInfo; 3] = [
+    ModelInfo {
+        name: "ggml-medium.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+    },
     ModelInfo {
         name: "ggml-base.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
@@ -305,6 +309,9 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         },
         "base" => whisper_rs::DtwMode::ModelPreset {
             model_preset: whisper_rs::DtwModelPreset::Base,
+        },
+        "medium" => whisper_rs::DtwMode::ModelPreset {
+            model_preset: whisper_rs::DtwModelPreset::Medium,
         },
         _ => panic!("Model unknown"),
     };
