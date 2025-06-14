@@ -238,7 +238,6 @@ pub async fn check_all_system_requirements() -> Result<()> {
     check_and_download_models(&http_client).await?;
     check_ollama_api_and_model(&http_client).await?;
 
-    println!("\nAll prerequisites are met!");
     Ok(())
 }
 
@@ -291,12 +290,19 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     model_name: &str,
     n_threads: i32,
     language: Option<&str>,
-) -> anyhow::Result<PathBuf> {
-    let model_path = model_path.as_ref();
+) -> Result<PathBuf> {
+    let model_path = match model_path.as_ref().to_str() {
+        Some(path) => path,
+        None => bail!("Invalid file name"),
+    };
+
     let transcript_dir = output_dir
         .as_ref()
         .join(format!("transcript_{}", model_name));
-    fs::create_dir_all(&transcript_dir)?;
+    fs::create_dir_all(&transcript_dir).context(format!(
+        "Cannot create output folder {}",
+        transcript_dir.display()
+    ))?;
 
     whisper_rs::install_logging_hooks();
     // Load a context and model.
@@ -313,13 +319,13 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         "medium" => whisper_rs::DtwMode::ModelPreset {
             model_preset: whisper_rs::DtwModelPreset::Medium,
         },
-        _ => panic!("Model unknown"),
+        _ => bail!("Unknow model"),
     };
 
-    let ctx = WhisperContext::new_with_params(model_path.to_str().unwrap(), context_param)
-        .expect("failed to load model");
+    let ctx = WhisperContext::new_with_params(model_path, context_param)
+        .context("Failed to load model")?;
     // Create a state
-    let mut state = ctx.create_state().expect("failed to create key");
+    let mut state = ctx.create_state().context("Failed to create state")?;
 
     // Create a params object for running the model.
     // The number of past samples to consider defaults to 0.
@@ -343,7 +349,11 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     params.set_token_timestamps(true);
 
     // Open the audio file.
-    let reader = hound::WavReader::open(audio_path).expect("failed to open file");
+    let reader = hound::WavReader::open(&audio_path).context(format!(
+        "Failed to open file {}",
+        audio_path.as_ref().display()
+    ))?;
+
     #[allow(unused_variables)]
     let hound::WavSpec {
         channels,
@@ -355,30 +365,38 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     // Convert the audio to floating point samples.
     let samples: Vec<i16> = reader
         .into_samples::<i16>()
-        .map(|x| x.expect("Invalid sample"))
-        .collect();
+        .collect::<Result<_, _>>()
+        .context("Failed to read samples from WAV file")?;
+
     let mut audio = vec![0.0f32; samples.len()];
-    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
+    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).context("Conversion error")?;
 
     if channels != 1 {
-        panic!(">1 channels unsupported");
+        bail!(">1 channels unsupported");
     }
 
     if sample_rate != 16000 {
-        panic!("sample rate must be 16KHz");
+        bail!("Sample rate must be 16KHz");
     }
 
     // Run the model.
-    state.full(params, &audio[..]).expect("failed to run model");
+    state
+        .full(params, &audio[..])
+        .context("Failed to run model")?;
 
     // Create a file to write the transcript to.
     let transcript_path = transcript_dir.join("transcript.txt");
-    let mut file = File::create(&transcript_path).expect("failed to create file");
+    let mut file = File::create(&transcript_path).with_context(|| {
+        format!(
+            "Failed to create transcript file: {}",
+            transcript_path.display()
+        )
+    })?;
 
     // Iterate through the segments of the transcript.
     let num_segments = state
         .full_n_segments()
-        .expect("failed to get number of segments");
+        .context("failed to get number of segments")?;
     for i in 0..num_segments {
         let segment = match state.full_get_segment_text(i) {
             Ok(s) => s,
@@ -387,10 +405,10 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 
         let start_timestamp = state
             .full_get_segment_t0(i)
-            .expect("failed to get start timestamp");
+            .context("failed to get start timestamp")?;
         let end_timestamp = state
             .full_get_segment_t1(i)
-            .expect("failed to get end timestamp");
+            .context("failed to get end timestamp")?;
 
         // Format the segment information as a string.
         // let line = format!(
@@ -411,7 +429,7 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 
         // Write the segment information to the file.
         file.write_all(line.as_bytes())
-            .expect("failed to write to file");
+            .context("failed to write to file")?;
     }
     Ok(transcript_path)
 }

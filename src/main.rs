@@ -13,7 +13,7 @@ struct Cli {
 
     /// Input file argument (required)
     input_file: String,
-    /// Input file argument (required)
+    /// Output folder to place output files (required)
     output_dir: String,
     // TODO: Add language
 }
@@ -34,20 +34,20 @@ async fn main() -> Result<()> {
 
     log::debug!("cli arguments = {:#?}", &cli);
     match check_all_system_requirements().await {
-        Ok(_) => println!("✅ System configuration validated successfully."),
+        Ok(_) => println!("✅ All prerequisites are met."),
         Err(e) => {
-            eprintln!("❌ Configuration error: {:?}", e);
+            eprintln!("❌ Configuration error: {:?}.", e);
             std::process::exit(1);
         }
     }
 
     let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir) {
         Ok(path) => {
-            println!("✅ Audio file converted : {}", path.display());
+            println!("✅ Audio file converted : {}.", path.display());
             path
         }
         Err(e) => {
-            eprintln!("❌ Erreur : {}", e);
+            eprintln!("❌ Erreur : {}.", e);
             std::process::exit(1);
         }
     };
@@ -56,15 +56,23 @@ async fn main() -> Result<()> {
     let model_name = "base";
     let threads = 4;
 
-    let transcript = transcribe_audio(
+    let transcript_path = match transcribe_audio(
         audio_path,
         PathBuf::from(&cli.output_dir),
         PathBuf::from(model_path),
         model_name,
         threads,
         None, // Some("fr"),
-    )?;
-    println!("Transcript saved to {}", transcript.display());
+    ) {
+        Ok(path) => {
+            println!("✅ Transcript saved to {}.", path.display());
+            path
+        }
+        Err(e) => {
+            eprintln!("❌ Erreur : {}.", e);
+            std::process::exit(1);
+        }
+    };
 
     Ok(())
 }
