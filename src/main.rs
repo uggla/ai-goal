@@ -10,12 +10,16 @@ struct Cli {
     /// Optional flag to enable debug. -ddd = trace, -dd = debug, -d = info, 0 = error.
     #[arg(short = 'd', action = clap::ArgAction::Count)]
     debug: u8,
-
+    /// Output language for the transcription
+    #[arg(short = 'l', long = "lang")]
+    lang: Option<String>,
+    /// Number of thread to use for whisper. Default to number of cpu cores.
+    #[arg(short = 't', long = "thread")]
+    thread: Option<u8>,
     /// Input file argument (required)
     input_file: String,
     /// Output folder to place output files (required)
     output_dir: String,
-    // TODO: Add language
 }
 
 #[tokio::main]
@@ -43,7 +47,7 @@ async fn main() -> Result<()> {
 
     let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir) {
         Ok(path) => {
-            println!("✅ Audio file converted : {}.", path.display());
+            println!("✅ Audio file converted : \"{}\".", path.display());
             path
         }
         Err(e) => {
@@ -54,18 +58,17 @@ async fn main() -> Result<()> {
 
     let model_path = "models/ggml-base.bin";
     let model_name = "base";
-    let threads = 4;
 
-    let transcript_path = match transcribe_audio(
+    let _transcript_path = match transcribe_audio(
         audio_path,
         PathBuf::from(&cli.output_dir),
         PathBuf::from(model_path),
         model_name,
-        threads,
-        None, // Some("fr"),
+        cli.thread,
+        cli.lang,
     ) {
         Ok(path) => {
-            println!("✅ Transcript saved to {}.", path.display());
+            println!("✅ Transcript saved to \"{}\".", path.display());
             path
         }
         Err(e) => {

@@ -226,7 +226,7 @@ async fn check_ollama_api_and_model(http_client: &Client) -> Result<()> {
 /// Main public function to orchestrate all system requirement checks.
 /// This function is made public so it can be called from main.rs.
 pub async fn check_all_system_requirements() -> Result<()> {
-    println!("Checking system prerequisites...");
+    println!("Checking system prerequisites.");
 
     check_ffmpeg_availability()?;
 
@@ -244,6 +244,8 @@ pub async fn check_all_system_requirements() -> Result<()> {
 pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Result<PathBuf> {
     let input_path = input.as_ref();
     let output_base = output_dir.as_ref().join("audio");
+
+    println!("Convert audio file to meet whisper requirements.");
 
     if !input_path.exists() {
         bail!("Input file does not exist: {}", input_path.display());
@@ -288,8 +290,8 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     output_dir: P,
     model_path: P,
     model_name: &str,
-    n_threads: i32,
-    language: Option<&str>,
+    n_threads: Option<u8>,
+    language: Option<String>,
 ) -> Result<PathBuf> {
     let model_path = match model_path.as_ref().to_str() {
         Some(path) => path,
@@ -299,6 +301,11 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     let transcript_dir = output_dir
         .as_ref()
         .join(format!("transcript_{}", model_name));
+
+    let n_threads = n_threads.unwrap_or(num_cpus::get() as u8);
+
+    println!("Transcribe audio file using {n_threads} threads.");
+
     fs::create_dir_all(&transcript_dir).context(format!(
         "Cannot create output folder {}",
         transcript_dir.display()
@@ -333,14 +340,14 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 
     // Edit params as needed.
     // Set the number of threads to use to 1.
-    params.set_n_threads(n_threads);
+    params.set_n_threads(n_threads.into());
     // Enable translation.
     if language.is_some() {
         params.set_translate(true);
     } else {
         params.set_translate(false);
     }
-    params.set_language(language);
+    params.set_language(language.as_deref());
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);
