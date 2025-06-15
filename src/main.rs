@@ -1,4 +1,7 @@
-use ai_goal::{check_all_system_requirements, convert_to_wav_mono_16k, transcribe_audio};
+use ai_goal::{
+    check_all_system_requirements, convert_to_wav_mono_16k, summarize_file_with_ollama,
+    transcribe_audio,
+};
 use anyhow::Result;
 use clap::Parser;
 use simple_logger::SimpleLogger;
@@ -59,7 +62,7 @@ async fn main() -> Result<()> {
     let model_path = "models/ggml-base.bin";
     let model_name = "base";
 
-    let _transcript_path = match transcribe_audio(
+    let transcript_path = match transcribe_audio(
         audio_path,
         PathBuf::from(&cli.output_dir),
         PathBuf::from(model_path),
@@ -76,6 +79,22 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     };
+
+    let model = "mistral"; // ou llama3, gemma, etc.
+
+    let _summary =
+        match summarize_file_with_ollama(model, transcript_path, PathBuf::from(&cli.output_dir))
+            .await
+        {
+            Ok(path) => {
+                println!("✅ Summary saved to \"{}\".", path.display());
+                path
+            }
+            Err(e) => {
+                eprintln!("❌ Erreur : {}.", e);
+                std::process::exit(1);
+            }
+        };
 
     Ok(())
 }

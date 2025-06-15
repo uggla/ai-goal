@@ -1,6 +1,9 @@
 // src/lib.rs
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
+use ollama_rs::Ollama;
+use ollama_rs::generation::completion::GenerationResponse;
+use ollama_rs::generation::completion::request::GenerationRequest;
 use reqwest::Client;
 use serde_json::Value;
 use std::fs::{self, File};
@@ -448,4 +451,46 @@ fn format_duration_hhmmss(d: Duration) -> String {
     let seconds = secs % 60;
 
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
+    model: &str,
+    transcript_path: P,
+    output_dir: P,
+) -> Result<PathBuf> {
+    let transcript_path = transcript_path.as_ref();
+    let output_dir = output_dir.as_ref().join(format!("summary_{}", model));
+    fs::create_dir_all(&output_dir).with_context(|| {
+        format!(
+            "Cannot create summary output folder: {}",
+            output_dir.display()
+        )
+    })?;
+
+    let content = fs::read_to_string(transcript_path).with_context(|| {
+        format!(
+            "Failed to read transcript file: {}",
+            transcript_path.display()
+        )
+    })?;
+
+    let prompt = format!(
+        "Voici une transcription brute d'une vidéo ou d'un podcast :\n\n{}\n\nFais-en un résumé clair, structuré et concis :",
+        content
+    );
+
+    let client = Ollama::default();
+    let request = GenerationRequest::new(model.to_string(), prompt);
+
+    let GenerationResponse { response, .. } = client
+        .generate(request)
+        .await
+        .context("Failed to get summary from Ollama")?;
+
+    let summary_path = output_dir.join("summary.txt");
+
+    fs::write(&summary_path, response.trim())
+        .with_context(|| format!("Failed to write summary to: {}", summary_path.display()))?;
+
+    Ok(summary_path)
 }
