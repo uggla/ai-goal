@@ -96,7 +96,7 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(
     )?;
 
     if output.exists() && !force {
-        info!("{} already exists.", output.path.display());
+        info!("⏭️ Skipping {} already exists.", output.path.display());
         return Ok(output.path);
     }
 
@@ -125,29 +125,35 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(
 
 pub fn transcribe_audio<P: AsRef<Path>>(
     audio_path: P,
-    output_dir: P,
+    root_dir: P,
     model_path: P,
     model_name: &str,
     n_threads: Option<u8>,
     language: Option<String>,
+    force: bool,
 ) -> Result<PathBuf> {
+    const TRANSCRIPT_FILE: &str = "transcript.txt";
+
     let model_path = match model_path.as_ref().to_str() {
         Some(path) => path,
         None => bail!("Invalid file name"),
     };
 
-    let transcript_dir = output_dir
-        .as_ref()
-        .join(format!("transcript_{}", model_name));
-
     let n_threads = n_threads.unwrap_or(num_cpus::get() as u8);
 
     info!("Transcribe audio file using {n_threads} threads.");
+    let output = build_output(
+        root_dir,
+        &format!("transcript_{}", model_name),
+        TRANSCRIPT_FILE,
+    )?;
 
-    fs::create_dir_all(&transcript_dir).context(format!(
-        "Cannot create output folder {}",
-        transcript_dir.display()
-    ))?;
+    if output.exists() && !force {
+        info!("⏭️ Skipping {} already exists.", output.path.display());
+        return Ok(output.path);
+    }
+
+    let transcript_path = output.path;
 
     whisper_rs::install_logging_hooks();
     // Load a context and model.
@@ -230,7 +236,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         .context("Failed to run model")?;
 
     // Create a file to write the transcript to.
-    let transcript_path = transcript_dir.join("transcript.txt");
     let mut file = File::create(&transcript_path).with_context(|| {
         format!(
             "Failed to create transcript file: {}",
@@ -304,7 +309,6 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     let tokenizer = cl100k_base()?;
 
     let tokens = tokenizer.encode_with_special_tokens(&content);
-    dbg!(&tokens);
     let mut summaries = Vec::new();
     let mut history = vec![];
 
@@ -364,45 +368,3 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     dbg!(summaries);
     Ok(summary_path)
 }
-
-// const MAX_TOKENS: usize = 2048;
-//
-// pub async fn summarize_text(text: &str, model: &str) -> Result<String> {
-//     let client = Ollama::default()?;
-//     let tokenizer = cl100k_base()?; // compatible avec GPT/Mistral/LLaMA
-//
-//     let tokens = tokenizer.encode_with_special_tokens(text);
-//     let mut summaries = Vec::new();
-//
-//     for chunk in tokens.chunks(MAX_TOKENS) {
-//         let chunk_text = tokenizer.decode(chunk.to_vec())?;
-//
-//         let messages = vec![
-//             ChatMessage::system("Tu es un assistant qui résume un texte dans sa langue d'origine."),
-//             ChatMessage::user(format!(
-//                 "Voici un extrait de texte à résumer :\n{chunk_text}"
-//             )),
-//         ];
-//
-//         let req = ChatRequest::new(model.to_string(), messages);
-//         let res = client.chat(req).await?;
-//         summaries.push(res.message.content.trim().to_string());
-//     }
-//
-//     let final_summary = if summaries.len() == 1 {
-//         summaries.remove(0)
-//     } else {
-//         let merged = summaries.join("\n");
-//         let messages = vec![
-//             ChatMessage::system("Tu es un assistant de résumé."),
-//             ChatMessage::user(format!(
-//                 "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global concis."
-//             )),
-//         ];
-//         let req = ChatRequest::new(model.to_string(), messages);
-//         let res = client.chat(req).await?;
-//         res.message.content.trim().to_string()
-//     };
-//
-//     Ok(final_summary)
-// }

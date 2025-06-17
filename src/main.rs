@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
 
     debug!("cli arguments = {:#?}", &cli);
 
-    info!("Starting {} version: {}", name, version);
+    info!("🚀 Starting {} version: {}", name, version);
     match check_all_system_requirements().await {
         Ok(_) => info!("✅ All prerequisites are met."),
         Err(e) => {
@@ -75,6 +75,7 @@ async fn main() -> Result<()> {
         model_name,
         cli.thread,
         cli.lang,
+        cli.force,
     ) {
         Ok(path) => {
             info!("✅ Transcript saved to \"{}\".", path.display());
@@ -102,5 +103,6 @@ async fn main() -> Result<()> {
             }
         };
 
+    info!("✅ {} completes successfully", name);
     Ok(())
 }
