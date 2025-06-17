@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use ollama_rs::Ollama;
 use ollama_rs::generation::chat::ChatMessage;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
+use ollama_rs::models::ModelOptions;
 use reqwest::Client;
 use std::fs::{self, File};
 use std::io::Write;
@@ -298,7 +299,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         )
     })?;
 
-    const MAX_TOKENS: usize = 1500;
+    const MAX_TOKENS: usize = 4096;
     let content = fs::read_to_string(transcript_path).with_context(|| {
         format!(
             "Failed to read transcript file: {}",
@@ -325,10 +326,12 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
             )),
         ];
 
+        let options = ModelOptions::default().num_ctx(8192);
+
         let res = client
             .send_chat_messages_with_history(
                 &mut history,
-                ChatMessageRequest::new(model.to_string(), messages),
+                ChatMessageRequest::new(model.to_string(), messages).options(options),
             )
             .await;
 
