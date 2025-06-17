@@ -19,6 +19,9 @@ struct Cli {
     /// Number of thread to use for whisper. Default to number of cpu cores.
     #[arg(short = 't', long = "thread")]
     thread: Option<u8>,
+    /// Force recreate the output
+    #[arg(short = 'f', long = "force")]
+    force: bool,
     /// Input file argument (required)
     input_file: String,
     /// Output folder to place output files (required)
@@ -48,7 +51,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir) {
+    let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir, cli.force) {
         Ok(path) => {
             println!("✅ Audio file converted : \"{}\".", path.display());
             path

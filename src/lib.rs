@@ -20,6 +20,8 @@ use tokio::io::AsyncWriteExt;
 
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+use crate::utils::{build_output, format_duration_hhmmss};
+
 // Define a struct for model information
 #[derive(Debug, Clone)]
 struct ModelInfo {
@@ -248,9 +250,12 @@ pub async fn check_all_system_requirements() -> Result<()> {
     Ok(())
 }
 
-pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Result<PathBuf> {
+pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(
+    input: P,
+    root_dir: P,
+    force: bool,
+) -> Result<PathBuf> {
     let input_path = input.as_ref();
-    let output_base = output_dir.as_ref().join("audio");
 
     println!("Convert audio file to meet whisper requirements.");
 
@@ -258,16 +263,21 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Resul
         bail!("Input file does not exist: {}", input_path.display());
     }
 
-    // Créer le dossier audio/ si nécessaire
-    fs::create_dir_all(&output_base)
-        .with_context(|| format!("Cannot create output folder {}", output_base.display()))?;
-
     let input_filename = match input_path.file_stem() {
         Some(filename) => filename.to_string_lossy(),
         None => bail!("Invalid file name"),
     };
 
-    let output_path = output_base.join(format!("{}_mono16k.wav", input_filename));
+    let output = build_output(
+        root_dir,
+        "audio",
+        &format!("{}_mono16k.wav", input_filename),
+    )?;
+
+    if output.exists() && !force {
+        info!("{} already exists.", output.path.display());
+        return Ok(output.path);
+    }
 
     let status = Command::new("ffmpeg")
         .args([
@@ -277,7 +287,7 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Resul
             "1",
             "-ar",
             "16000",
-            output_path.to_str().unwrap(),
+            output.path.to_str().unwrap(),
             "-y",
         ])
         .stdout(Stdio::null())
@@ -289,7 +299,7 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(input: P, output_dir: P) -> Resul
         bail!("ffmpeg fails with status: {}", status);
     }
 
-    Ok(output_path)
+    Ok(output.path)
 }
 
 pub fn transcribe_audio<P: AsRef<Path>>(
@@ -446,15 +456,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
             .context("failed to write to file")?;
     }
     Ok(transcript_path)
-}
-
-fn format_duration_hhmmss(d: Duration) -> String {
-    let secs = d.as_secs();
-    let hours = secs / 3600;
-    let minutes = (secs % 3600) / 60;
-    let seconds = secs % 60;
-
-    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
 
 pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
