@@ -1,12 +1,12 @@
 // src/lib.rs
+
+mod utils;
+
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
 use ollama_rs::Ollama;
 use ollama_rs::generation::chat::ChatMessage;
-use ollama_rs::generation::chat::ChatMessageResponse;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
-use ollama_rs::generation::completion::GenerationResponse;
-use ollama_rs::generation::completion::request::GenerationRequest;
 use reqwest::Client;
 use serde_json::Value;
 use std::fs::{self, File};
@@ -17,6 +17,7 @@ use std::time::Duration;
 use tiktoken_rs::cl100k_base;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
+use tracing::info;
 
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
@@ -257,7 +258,7 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(
 ) -> Result<PathBuf> {
     let input_path = input.as_ref();
 
-    println!("Convert audio file to meet whisper requirements.");
+    info!("Convert audio file to meet whisper requirements.");
 
     if !input_path.exists() {
         bail!("Input file does not exist: {}", input_path.display());

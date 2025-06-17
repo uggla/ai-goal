@@ -4,8 +4,8 @@ use ai_goal::{
 };
 use anyhow::Result;
 use clap::Parser;
-use simple_logger::SimpleLogger;
 use std::path::PathBuf;
+use tracing::{Level, debug, error, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -30,34 +30,37 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+
     let cli = Cli::parse();
 
-    SimpleLogger::new()
-        .with_level(match cli.debug {
-            3.. => log::LevelFilter::Trace,
-            2 => log::LevelFilter::Debug,
-            1 => log::LevelFilter::Info,
-            0 => log::LevelFilter::Error,
+    tracing_subscriber::fmt()
+        .with_max_level(match cli.debug {
+            2.. => Level::TRACE,
+            1 => Level::DEBUG,
+            0 => Level::INFO,
         })
-        .with_utc_timestamps()
-        .init()?;
+        .init();
 
-    log::debug!("cli arguments = {:#?}", &cli);
+    debug!("cli arguments = {:#?}", &cli);
+
+    info!("Starting {} version: {}", name, version);
     match check_all_system_requirements().await {
-        Ok(_) => println!("✅ All prerequisites are met."),
+        Ok(_) => info!("✅ All prerequisites are met."),
         Err(e) => {
-            eprintln!("❌ Configuration error: {:?}.", e);
+            error!("❌ Configuration error: {:?}.", e);
             std::process::exit(1);
         }
     }
 
     let audio_path = match convert_to_wav_mono_16k(&cli.input_file, &cli.output_dir, cli.force) {
         Ok(path) => {
-            println!("✅ Audio file converted : \"{}\".", path.display());
+            info!("✅ Audio file converted : \"{}\".", path.display());
             path
         }
         Err(e) => {
-            eprintln!("❌ Erreur : {}.", e);
+            error!("❌ Erreur : {}.", e);
             std::process::exit(1);
         }
     };
@@ -74,11 +77,11 @@ async fn main() -> Result<()> {
         cli.lang,
     ) {
         Ok(path) => {
-            println!("✅ Transcript saved to \"{}\".", path.display());
+            info!("✅ Transcript saved to \"{}\".", path.display());
             path
         }
         Err(e) => {
-            eprintln!("❌ Erreur : {}.", e);
+            error!("❌ Erreur : {}.", e);
             std::process::exit(1);
         }
     };
@@ -90,11 +93,11 @@ async fn main() -> Result<()> {
             .await
         {
             Ok(path) => {
-                println!("✅ Summary saved to \"{}\".", path.display());
+                info!("✅ Summary saved to \"{}\".", path.display());
                 path
             }
             Err(e) => {
-                eprintln!("❌ Erreur : {}.", e);
+                error!("❌ Erreur : {}.", e);
                 std::process::exit(1);
             }
         };
