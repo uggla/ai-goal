@@ -56,7 +56,7 @@ const OLLAMA_TARGET_MODELS: &[&str] = &["mistral", "llama3", "gemma"];
 /// Main public function to orchestrate all system requirement checks.
 /// This function is made public so it can be called from main.rs.
 pub async fn check_all_system_requirements() -> Result<()> {
-    println!("Checking system prerequisites.");
+    info!("Checking system prerequisites.");
 
     check_ffmpeg_availability()?;
 
@@ -142,7 +142,7 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 
     let n_threads = n_threads.unwrap_or(num_cpus::get() as u8);
 
-    println!("Transcribe audio file using {n_threads} threads.");
+    info!("Transcribe audio file using {n_threads} threads.");
 
     fs::create_dir_all(&transcript_dir).context(format!(
         "Cannot create output folder {}",
