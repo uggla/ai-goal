@@ -2,6 +2,9 @@
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
 use ollama_rs::Ollama;
+use ollama_rs::generation::chat::ChatMessage;
+use ollama_rs::generation::chat::ChatMessageResponse;
+use ollama_rs::generation::chat::request::ChatMessageRequest;
 use ollama_rs::generation::completion::GenerationResponse;
 use ollama_rs::generation::completion::request::GenerationRequest;
 use reqwest::Client;
@@ -11,6 +14,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+use tiktoken_rs::cl100k_base;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
 
@@ -467,6 +471,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         )
     })?;
 
+    const MAX_TOKENS: usize = 1500;
     let content = fs::read_to_string(transcript_path).with_context(|| {
         format!(
             "Failed to read transcript file: {}",
@@ -474,23 +479,108 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         )
     })?;
 
-    let prompt = format!(
-        "Voici une transcription brute d'une vidéo ou d'un podcast :\n\n{}\n\nFais-en un résumé clair, structuré et concis :",
-        content
-    );
+    let tokenizer = cl100k_base()?;
 
-    let client = Ollama::default();
-    let request = GenerationRequest::new(model.to_string(), prompt);
+    let tokens = tokenizer.encode_with_special_tokens(&content);
+    dbg!(&tokens);
+    let mut summaries = Vec::new();
+    let mut history = vec![];
 
-    let GenerationResponse { response, .. } = client
-        .generate(request)
-        .await
-        .context("Failed to get summary from Ollama")?;
+    let mut client = Ollama::default();
+    for chunk in tokens.chunks(MAX_TOKENS) {
+        let chunk_text = tokenizer.decode(chunk.to_vec())?;
+
+        let messages = vec![
+            ChatMessage::system(
+                "Tu es un assistant qui résume un texte dans sa langue d'origine et de manière consise.".to_string(),
+            ),
+            ChatMessage::user(format!(
+                "Voici un extrait de texte à résumer :\n{chunk_text}"
+            )),
+        ];
+
+        let res = client
+            .send_chat_messages_with_history(
+                &mut history,
+                ChatMessageRequest::new(model.to_string(), messages),
+            )
+            .await;
+
+        if let Ok(res) = res {
+            summaries.push(res.message.content.trim().to_string());
+        }
+    }
+
+    let final_summary = if summaries.len() == 1 {
+        summaries.remove(0)
+    } else {
+        let merged = summaries.join("\n");
+        let messages = vec![
+            ChatMessage::system("Tu es un assistant de résumé.".to_string()),
+            ChatMessage::user(format!(
+                "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global."
+            )),
+        ];
+        let res = client
+            .send_chat_messages_with_history(
+                &mut history,
+                ChatMessageRequest::new(model.to_string(), messages),
+            )
+            .await;
+
+        if let Ok(res) = res {
+            res.message.content.trim().to_string()
+        } else {
+            "".to_string()
+        }
+    };
 
     let summary_path = output_dir.join("summary.txt");
 
-    fs::write(&summary_path, response.trim())
+    fs::write(&summary_path, final_summary)
         .with_context(|| format!("Failed to write summary to: {}", summary_path.display()))?;
-
+    dbg!(summaries);
     Ok(summary_path)
 }
+
+// const MAX_TOKENS: usize = 2048;
+//
+// pub async fn summarize_text(text: &str, model: &str) -> Result<String> {
+//     let client = Ollama::default()?;
+//     let tokenizer = cl100k_base()?; // compatible avec GPT/Mistral/LLaMA
+//
+//     let tokens = tokenizer.encode_with_special_tokens(text);
+//     let mut summaries = Vec::new();
+//
+//     for chunk in tokens.chunks(MAX_TOKENS) {
+//         let chunk_text = tokenizer.decode(chunk.to_vec())?;
+//
+//         let messages = vec![
+//             ChatMessage::system("Tu es un assistant qui résume un texte dans sa langue d'origine."),
+//             ChatMessage::user(format!(
+//                 "Voici un extrait de texte à résumer :\n{chunk_text}"
+//             )),
+//         ];
+//
+//         let req = ChatRequest::new(model.to_string(), messages);
+//         let res = client.chat(req).await?;
+//         summaries.push(res.message.content.trim().to_string());
+//     }
+//
+//     let final_summary = if summaries.len() == 1 {
+//         summaries.remove(0)
+//     } else {
+//         let merged = summaries.join("\n");
+//         let messages = vec![
+//             ChatMessage::system("Tu es un assistant de résumé."),
+//             ChatMessage::user(format!(
+//                 "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global concis."
+//             )),
+//         ];
+//         let req = ChatRequest::new(model.to_string(), messages);
+//         let res = client.chat(req).await?;
+//         res.message.content.trim().to_string()
+//     };
+//
+//     Ok(final_summary)
+// }
