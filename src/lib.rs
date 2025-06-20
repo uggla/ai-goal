@@ -288,18 +288,16 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     model: &str,
     transcript_path: P,
-    output_dir: P,
+    root_dir: P,
 ) -> Result<PathBuf> {
+    const SUMMARY_FILE: &str = "summary.txt";
     let transcript_path = transcript_path.as_ref();
-    let output_dir = output_dir.as_ref().join(format!("summary_{}", model));
-    fs::create_dir_all(&output_dir).with_context(|| {
-        format!(
-            "Cannot create summary output folder: {}",
-            output_dir.display()
-        )
-    })?;
+
+    let output_final_summary =
+        build_output(&root_dir, &format!("summary_{}", model), SUMMARY_FILE)?;
 
     const MAX_TOKENS: usize = 4096;
+
     let content = fs::read_to_string(transcript_path).with_context(|| {
         format!(
             "Failed to read transcript file: {}",
@@ -314,7 +312,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     let mut history = vec![];
 
     let mut client = Ollama::default();
-    for chunk in tokens.chunks(MAX_TOKENS) {
+    for (index, chunk) in tokens.chunks(MAX_TOKENS).enumerate() {
         let chunk_text = tokenizer.decode(chunk.to_vec())?;
 
         let messages = vec![
@@ -336,7 +334,19 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
             .await;
 
         if let Ok(res) = res {
-            summaries.push(res.message.content.trim().to_string());
+            let content = res.message.content.trim().to_string();
+            summaries.push(content.clone());
+            let output_partial_summary = build_output(
+                &root_dir,
+                &format!("summary_{}", model),
+                &format!("partial_summary_{}.txt", index),
+            )?;
+            fs::write(&output_partial_summary.path, &content).with_context(|| {
+                format!(
+                    "Failed to write summary to: {}",
+                    output_partial_summary.path.display()
+                )
+            })?;
         }
     }
 
@@ -350,10 +360,16 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
                 "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global."
             )),
         ];
+
+        let options = ModelOptions::default().num_ctx(8192);
+
+        // Clean history to avoid influence from latest entry.
+        history.clear();
+
         let res = client
             .send_chat_messages_with_history(
                 &mut history,
-                ChatMessageRequest::new(model.to_string(), messages),
+                ChatMessageRequest::new(model.to_string(), messages).options(options),
             )
             .await;
 
@@ -364,10 +380,11 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         }
     };
 
-    let summary_path = output_dir.join("summary.txt");
-
-    fs::write(&summary_path, final_summary)
-        .with_context(|| format!("Failed to write summary to: {}", summary_path.display()))?;
-    dbg!(summaries);
-    Ok(summary_path)
+    fs::write(&output_final_summary.path, final_summary).with_context(|| {
+        format!(
+            "Failed to write summary to: {}",
+            output_final_summary.path.display()
+        )
+    })?;
+    Ok(output_final_summary.path)
 }

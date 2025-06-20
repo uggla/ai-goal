@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    let model = "mistral"; // ou llama3, gemma, etc.
+    let model = "granite3.3:2b"; // ou llama3, gemma, etc.
 
     let _summary =
         match summarize_file_with_ollama(model, transcript_path, PathBuf::from(&cli.output_dir))
