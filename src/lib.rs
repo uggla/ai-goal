@@ -124,6 +124,14 @@ const OLLAMA_MODELS: [OllamaModelInfo; 3] = [
         name: OllamaModelName::Granite332b,
         ctx_size: 8192,
     },
+    OllamaModelInfo {
+        name: OllamaModelName::Gemma,
+        ctx_size: 8192,
+    },
+    OllamaModelInfo {
+        name: OllamaModelName::Llama3,
+        ctx_size: 8192,
+    },
     // Add other models here if needed
 ];
 
