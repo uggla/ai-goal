@@ -1,7 +1,7 @@
 use crate::OllamaModelName;
 
-use super::MODEL_FILES;
 use super::OLLAMA_API_URL;
+use super::WHISPER_MODEL_FILES;
 use super::WHISPER_MODELS_DIR;
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
@@ -54,7 +54,7 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
 
     let mut download_futures = Vec::new();
 
-    for model_info in MODEL_FILES.iter() {
+    for model_info in WHISPER_MODEL_FILES.iter() {
         let model_path = models_path_obj.join(model_info.filename);
         if model_path.exists() {
             info!("   Model '{}' found.", model_info.filename);

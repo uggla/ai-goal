@@ -51,7 +51,7 @@ struct WhisperModelInfo {
 }
 
 // Define model URLs and expected filenames using the struct
-const MODEL_FILES: [WhisperModelInfo; 3] = [
+const WHISPER_MODEL_FILES: [WhisperModelInfo; 3] = [
     WhisperModelInfo {
         name: WhiperModelName::Medium,
         filename: "ggml-medium.bin",
@@ -102,7 +102,10 @@ const OLLAMA_API_URL: &str = "http://localhost:11434/api/tags";
 // ];
 
 pub fn find_whisper_model(modelname: WhiperModelName) -> (String, PathBuf) {
-    let model_info = MODEL_FILES.iter().find(|o| o.name == modelname).unwrap();
+    let model_info = WHISPER_MODEL_FILES
+        .iter()
+        .find(|o| o.name == modelname)
+        .unwrap();
     (
         model_info.name.clone().into(),
         PathBuf::from(WHISPER_MODELS_DIR).join(PathBuf::from(model_info.filename)),
