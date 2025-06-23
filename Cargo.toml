@@ -20,3 +20,6 @@ whisper-rs = "0.14.3"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+
+[lib]
+path = "src/lib.rs"

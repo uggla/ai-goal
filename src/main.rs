@@ -1,6 +1,6 @@
 use ai_goal::{
-    check_all_system_requirements, convert_to_wav_mono_16k, summarize_file_with_ollama,
-    transcribe_audio,
+    WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k, find_whisper_model,
+    summarize_file_with_ollama, transcribe_audio,
 };
 use anyhow::Result;
 use clap::Parser;
@@ -22,6 +22,9 @@ struct Cli {
     /// Force recreate the output
     #[arg(short = 'f', long = "force")]
     force: bool,
+    /// Whisper model to use
+    #[arg(long = "wm",value_enum, default_value_t = WhiperModelName::Base)]
+    whisper_model: WhiperModelName,
     /// Input file argument (required)
     input_file: String,
     /// Output folder to place output files (required)
@@ -45,6 +48,8 @@ async fn main() -> Result<()> {
 
     debug!("cli arguments = {:#?}", &cli);
 
+    let (model_name, model_path) = find_whisper_model(cli.whisper_model);
+
     info!("🚀 Starting {} version: {}", name, version);
     match check_all_system_requirements().await {
         Ok(_) => info!("✅ All prerequisites are met."),
@@ -65,14 +70,11 @@ async fn main() -> Result<()> {
         }
     };
 
-    let model_path = "models/ggml-base.bin";
-    let model_name = "base";
-
     let transcript_path = match transcribe_audio(
         audio_path,
         PathBuf::from(&cli.output_dir),
-        PathBuf::from(model_path),
-        model_name,
+        model_path,
+        &model_name,
         cli.thread,
         cli.lang,
         cli.force,

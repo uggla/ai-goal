@@ -4,6 +4,7 @@ mod checks;
 mod utils;
 
 use anyhow::{Context, Result, bail};
+use clap::ValueEnum;
 use ollama_rs::Ollama;
 use ollama_rs::generation::chat::ChatMessage;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
@@ -25,24 +26,45 @@ use crate::checks::{
 use crate::utils::{build_output, format_duration_hhmmss};
 
 // Define a struct for model information
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
+pub enum WhiperModelName {
+    Tiny,
+    Base,
+    Medium,
+}
+
+impl From<WhiperModelName> for String {
+    fn from(value: WhiperModelName) -> Self {
+        match value {
+            WhiperModelName::Tiny => "tiny".to_string(),
+            WhiperModelName::Base => "base".to_string(),
+            WhiperModelName::Medium => "medium".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-struct ModelInfo {
-    name: &'static str,
+struct WhisperModelInfo {
+    pub name: WhiperModelName,
+    pub filename: &'static str,
     url: &'static str,
 }
 
 // Define model URLs and expected filenames using the struct
-const MODEL_FILES: [ModelInfo; 3] = [
-    ModelInfo {
-        name: "ggml-medium.bin",
+const MODEL_FILES: [WhisperModelInfo; 3] = [
+    WhisperModelInfo {
+        name: WhiperModelName::Medium,
+        filename: "ggml-medium.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
     },
-    ModelInfo {
-        name: "ggml-base.bin",
+    WhisperModelInfo {
+        name: WhiperModelName::Base,
+        filename: "ggml-base.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
     },
-    ModelInfo {
-        name: "ggml-tiny.bin",
+    WhisperModelInfo {
+        name: WhiperModelName::Tiny,
+        filename: "ggml-tiny.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
     },
     // Add other models here if needed
@@ -53,6 +75,14 @@ const OLLAMA_API_URL: &str = "http://localhost:11434/api/tags";
 
 // Define a list of target Ollama models
 const OLLAMA_TARGET_MODELS: &[&str] = &["mistral", "llama3", "gemma"];
+
+pub fn find_whisper_model(modelname: WhiperModelName) -> (String, PathBuf) {
+    let model_info = MODEL_FILES.iter().find(|o| o.name == modelname).unwrap();
+    (
+        model_info.name.clone().into(),
+        PathBuf::from(MODELS_DIR).join(PathBuf::from(model_info.filename)),
+    )
+}
 
 /// Main public function to orchestrate all system requirement checks.
 /// This function is made public so it can be called from main.rs.

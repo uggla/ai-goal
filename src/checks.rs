@@ -47,13 +47,13 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
     let mut download_futures = Vec::new();
 
     for model_info in MODEL_FILES.iter() {
-        let model_path = models_path_obj.join(model_info.name);
+        let model_path = models_path_obj.join(model_info.filename);
         if model_path.exists() {
-            info!("   Model '{}' found.", model_info.name);
+            info!("   Model '{}' found.", model_info.filename);
         } else {
             info!(
                 "   Model '{}' not found. Starting download from {}...",
-                model_info.name, model_info.url
+                model_info.filename, model_info.url
             );
             let client_clone = http_client.clone();
             let model_info_clone = model_info.clone();
@@ -67,7 +67,7 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
                     .with_context(|| {
                         format!(
                             "Failed to send download request for model '{}' from {}",
-                            model_info_clone.name, model_info_clone.url
+                            model_info_clone.filename, model_info_clone.url
                         )
                     })?;
 
@@ -78,34 +78,37 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
                             .with_context(|| {
                                 format!(
                                     "Could not create file for model '{}' at {:?}",
-                                    model_info_clone.name, model_path_clone
+                                    model_info_clone.filename, model_path_clone
                                 )
                             })?;
 
                     let mut stream = response.bytes_stream();
                     while let Some(item) = futures::StreamExt::next(&mut stream).await {
                         let chunk = item.with_context(|| {
-                            format!("Error while downloading model '{}'", model_info_clone.name)
+                            format!(
+                                "Error while downloading model '{}'",
+                                model_info_clone.filename
+                            )
                         })?;
                         dest_file.write_all(&chunk).await.with_context(|| {
                             format!(
                                 "Error writing chunk for model '{}' to {:?}",
-                                model_info_clone.name, model_path_clone
+                                model_info_clone.filename, model_path_clone
                             )
                         })?;
                     }
                     dest_file.flush().await.with_context(|| {
-                        format!("Error flushing model file '{}'", model_info_clone.name)
+                        format!("Error flushing model file '{}'", model_info_clone.filename)
                     })?;
                     info!(
                         "   Model '{}' downloaded successfully.",
-                        model_info_clone.name
+                        model_info_clone.filename
                     );
                     Ok(())
                 } else {
                     bail!(
                         "Failed to download model '{}'. Status: {}",
-                        model_info_clone.name,
+                        model_info_clone.filename,
                         response.status()
                     );
                 }
