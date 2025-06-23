@@ -92,14 +92,42 @@ impl From<OllamaModelName> for String {
         }
     }
 }
-const OLLAMA_API_URL: &str = "http://localhost:11434/api/tags";
 
-// // Define a list of target Ollama models
-// const OLLAMA_TARGET_MODELS: &[&str] = &[
-//     String::from(OllamaModelName::Mistral).as_str(),
-//     String::from(OllamaModelName::Granite33).as_str(),
-//     String::from(OllamaModelName::Llama3).as_str(),
-// ];
+impl From<&OllamaModelName> for String {
+    fn from(value: &OllamaModelName) -> Self {
+        match value {
+            OllamaModelName::Mistral => "mistral".to_string(),
+            OllamaModelName::Llama3 => "llama3".to_string(),
+            OllamaModelName::Gemma => "gemma".to_string(),
+            OllamaModelName::Granite33 => "granite3.3:latest".to_string(),
+            OllamaModelName::Granite332b => "granite3.3:2b".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OllamaModelInfo {
+    pub name: OllamaModelName,
+    pub ctx_size: usize,
+}
+
+const OLLAMA_MODELS: [OllamaModelInfo; 3] = [
+    OllamaModelInfo {
+        name: OllamaModelName::Mistral,
+        ctx_size: 8192,
+    },
+    OllamaModelInfo {
+        name: OllamaModelName::Granite33,
+        ctx_size: 8192,
+    },
+    OllamaModelInfo {
+        name: OllamaModelName::Granite332b,
+        ctx_size: 8192,
+    },
+    // Add other models here if needed
+];
+
+const OLLAMA_API_URL: &str = "http://localhost:11434/api/tags";
 
 pub fn find_whisper_model(modelname: WhiperModelName) -> (String, PathBuf) {
     let model_info = WHISPER_MODEL_FILES
@@ -110,6 +138,14 @@ pub fn find_whisper_model(modelname: WhiperModelName) -> (String, PathBuf) {
         model_info.name.clone().into(),
         PathBuf::from(WHISPER_MODELS_DIR).join(PathBuf::from(model_info.filename)),
     )
+}
+
+pub fn find_ollama_model(modelname: OllamaModelName) -> OllamaModelInfo {
+    OLLAMA_MODELS
+        .iter()
+        .find(|o| o.name == modelname)
+        .unwrap()
+        .clone()
 }
 
 /// Main public function to orchestrate all system requirement checks.
@@ -200,7 +236,7 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 
     let n_threads = n_threads.unwrap_or(num_cpus::get() as u8);
 
-    info!("Transcribe audio file using {n_threads} threads.");
+    info!("Transcribe audio file using {n_threads} threads and model {model_name}.");
     let output = build_output(
         root_dir,
         &format!("transcript_{}", model_name),
@@ -242,7 +278,6 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 0 });
 
     // Edit params as needed.
-    // Set the number of threads to use to 1.
     params.set_n_threads(n_threads.into());
     // Enable translation.
     if language.is_some() {
@@ -344,17 +379,22 @@ pub fn transcribe_audio<P: AsRef<Path>>(
 }
 
 pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
-    model: &str,
+    model: OllamaModelInfo,
     transcript_path: P,
     root_dir: P,
 ) -> Result<PathBuf> {
     const SUMMARY_FILE: &str = "summary.txt";
     let transcript_path = transcript_path.as_ref();
 
-    let output_final_summary =
-        build_output(&root_dir, &format!("summary_{}", model), SUMMARY_FILE)?;
+    info!("Summarize file with {} model.", String::from(&model.name));
 
-    const MAX_TOKENS: usize = 4096;
+    let output_final_summary = build_output(
+        &root_dir,
+        &format!("summary_{}", String::from(&model.name)),
+        SUMMARY_FILE,
+    )?;
+
+    let max_tokens: usize = model.ctx_size / 2;
 
     let content = fs::read_to_string(transcript_path).with_context(|| {
         format!(
@@ -370,7 +410,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     let mut history = vec![];
 
     let mut client = Ollama::default();
-    for (index, chunk) in tokens.chunks(MAX_TOKENS).enumerate() {
+    for (index, chunk) in tokens.chunks(max_tokens).enumerate() {
         let chunk_text = tokenizer.decode(chunk.to_vec())?;
 
         let messages = vec![
@@ -387,7 +427,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         let res = client
             .send_chat_messages_with_history(
                 &mut history,
-                ChatMessageRequest::new(model.to_string(), messages).options(options),
+                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
             )
             .await;
 
@@ -396,7 +436,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
             summaries.push(content.clone());
             let output_partial_summary = build_output(
                 &root_dir,
-                &format!("summary_{}", model),
+                &format!("summary_{}", String::from(&model.name)),
                 &format!("partial_summary_{}.txt", index),
             )?;
             fs::write(&output_partial_summary.path, &content).with_context(|| {
@@ -427,7 +467,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         let res = client
             .send_chat_messages_with_history(
                 &mut history,
-                ChatMessageRequest::new(model.to_string(), messages).options(options),
+                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
             )
             .await;
 

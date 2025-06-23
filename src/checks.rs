@@ -1,8 +1,7 @@
-use crate::OllamaModelName;
-
 use super::OLLAMA_API_URL;
 use super::WHISPER_MODEL_FILES;
 use super::WHISPER_MODELS_DIR;
+use crate::OLLAMA_MODELS;
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
 use reqwest::Client;
@@ -137,11 +136,10 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
 
 /// Checks if the Ollama API is responsive and if all of the specified target models are available.
 pub(crate) async fn check_ollama_api_and_model(http_client: &Client) -> Result<()> {
-    let ollama_target_models = HashSet::from([
-        String::from(OllamaModelName::Mistral),
-        String::from(OllamaModelName::Granite332b),
-        String::from(OllamaModelName::Granite33),
-    ]);
+    let ollama_target_models = OLLAMA_MODELS
+        .iter()
+        .map(|o| String::from(o.name.clone()))
+        .collect::<HashSet<String>>();
 
     info!(
         "3. Checking Ollama API and target models: {:?}...",

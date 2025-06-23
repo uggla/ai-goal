@@ -1,6 +1,6 @@
 use ai_goal::{
     OllamaModelName, WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k,
-    find_whisper_model, summarize_file_with_ollama, transcribe_audio,
+    find_ollama_model, find_whisper_model, summarize_file_with_ollama, transcribe_audio,
 };
 use anyhow::Result;
 use clap::Parser;
@@ -92,21 +92,22 @@ async fn main() -> Result<()> {
         }
     };
 
-    let model = "granite3.3:2b"; // ou llama3, gemma, etc.
-
-    let _summary =
-        match summarize_file_with_ollama(model, transcript_path, PathBuf::from(&cli.output_dir))
-            .await
-        {
-            Ok(path) => {
-                info!("✅ Summary saved to \"{}\".", path.display());
-                path
-            }
-            Err(e) => {
-                error!("❌ Erreur : {}.", e);
-                std::process::exit(1);
-            }
-        };
+    let _summary = match summarize_file_with_ollama(
+        find_ollama_model(cli.ollama_model),
+        transcript_path,
+        PathBuf::from(&cli.output_dir),
+    )
+    .await
+    {
+        Ok(path) => {
+            info!("✅ Summary saved to \"{}\".", path.display());
+            path
+        }
+        Err(e) => {
+            error!("❌ Erreur : {}.", e);
+            std::process::exit(1);
+        }
+    };
 
     info!("✅ {} completes successfully", name);
     Ok(())
