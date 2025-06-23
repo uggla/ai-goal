@@ -70,17 +70,42 @@ const MODEL_FILES: [WhisperModelInfo; 3] = [
     // Add other models here if needed
 ];
 
-const MODELS_DIR: &str = "models";
+const WHISPER_MODELS_DIR: &str = "models";
+
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
+pub enum OllamaModelName {
+    Mistral,
+    Llama3,
+    Gemma,
+    Granite33,
+    Granite332b,
+}
+
+impl From<OllamaModelName> for String {
+    fn from(value: OllamaModelName) -> Self {
+        match value {
+            OllamaModelName::Mistral => "mistral".to_string(),
+            OllamaModelName::Llama3 => "llama3".to_string(),
+            OllamaModelName::Gemma => "gemma".to_string(),
+            OllamaModelName::Granite33 => "granite3.3:latest".to_string(),
+            OllamaModelName::Granite332b => "granite3.3:2b".to_string(),
+        }
+    }
+}
 const OLLAMA_API_URL: &str = "http://localhost:11434/api/tags";
 
-// Define a list of target Ollama models
-const OLLAMA_TARGET_MODELS: &[&str] = &["mistral", "llama3", "gemma"];
+// // Define a list of target Ollama models
+// const OLLAMA_TARGET_MODELS: &[&str] = &[
+//     String::from(OllamaModelName::Mistral).as_str(),
+//     String::from(OllamaModelName::Granite33).as_str(),
+//     String::from(OllamaModelName::Llama3).as_str(),
+// ];
 
 pub fn find_whisper_model(modelname: WhiperModelName) -> (String, PathBuf) {
     let model_info = MODEL_FILES.iter().find(|o| o.name == modelname).unwrap();
     (
         model_info.name.clone().into(),
-        PathBuf::from(MODELS_DIR).join(PathBuf::from(model_info.filename)),
+        PathBuf::from(WHISPER_MODELS_DIR).join(PathBuf::from(model_info.filename)),
     )
 }
 

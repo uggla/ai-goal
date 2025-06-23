@@ -1,15 +1,20 @@
+use crate::OllamaModelName;
+
 use super::MODEL_FILES;
-use super::MODELS_DIR;
 use super::OLLAMA_API_URL;
-use super::OLLAMA_TARGET_MODELS;
+use super::WHISPER_MODELS_DIR;
 use anyhow::{Context, Result, bail};
 use futures::future::join_all;
 use reqwest::Client;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
+use std::process::Stdio;
+use std::sync::Arc;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
+use tokio::{sync::Semaphore, task::JoinSet};
 use tracing::info;
 
 /// Checks if ffmpeg is installed and accessible.
@@ -35,13 +40,16 @@ pub(crate) fn check_ffmpeg_availability() -> Result<()> {
 /// Checks for Whisper model files and downloads them in parallel if missing.
 pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()> {
     info!("2. Checking Whisper models...");
-    let models_path_obj = Path::new(MODELS_DIR);
+    let models_path_obj = Path::new(WHISPER_MODELS_DIR);
 
     if !models_path_obj.exists() {
-        info!("   '{}' directory does not exist, creating...", MODELS_DIR);
+        info!(
+            "   '{}' directory does not exist, creating...",
+            WHISPER_MODELS_DIR
+        );
         tokio::fs::create_dir_all(models_path_obj)
             .await
-            .with_context(|| format!("Could not create directory '{}'", MODELS_DIR))?;
+            .with_context(|| format!("Could not create directory '{}'", WHISPER_MODELS_DIR))?;
     }
 
     let mut download_futures = Vec::new();
@@ -52,7 +60,7 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
             info!("   Model '{}' found.", model_info.filename);
         } else {
             info!(
-                "   Model '{}' not found. Starting download from {}...",
+                "   Model '{}' not found.⬇️ Starting download from {}...",
                 model_info.filename, model_info.url
             );
             let client_clone = http_client.clone();
@@ -127,11 +135,17 @@ pub(crate) async fn check_and_download_models(http_client: &Client) -> Result<()
     Ok(())
 }
 
-/// Checks if the Ollama API is responsive and if any of the specified target models are available.
+/// Checks if the Ollama API is responsive and if all of the specified target models are available.
 pub(crate) async fn check_ollama_api_and_model(http_client: &Client) -> Result<()> {
+    let ollama_target_models = HashSet::from([
+        String::from(OllamaModelName::Mistral),
+        String::from(OllamaModelName::Granite332b),
+        String::from(OllamaModelName::Granite33),
+    ]);
+
     info!(
         "3. Checking Ollama API and target models: {:?}...",
-        OLLAMA_TARGET_MODELS
+        ollama_target_models
     );
 
     let response = http_client
@@ -164,28 +178,34 @@ pub(crate) async fn check_ollama_api_and_model(http_client: &Client) -> Result<(
             .filter_map(|m| m.get("name").and_then(Value::as_str).map(String::from))
             .collect();
 
-        let mut found_target_models_on_system = Vec::new();
-        for target_model_name in OLLAMA_TARGET_MODELS.iter() {
+        let mut found_target_models_on_system = HashSet::new();
+        for target_model_name in ollama_target_models.iter() {
             if ollama_models_on_system
                 .iter()
                 .any(|sys_model_name| sys_model_name.starts_with(target_model_name))
             {
-                found_target_models_on_system.push(*target_model_name);
+                found_target_models_on_system.insert(target_model_name.clone());
             }
         }
 
-        if !found_target_models_on_system.is_empty() {
+        let difference: HashSet<String> = ollama_target_models
+            .difference(&found_target_models_on_system)
+            .cloned()
+            .collect();
+
+        if difference.is_empty() {
             info!(
                 "   Found target Ollama model(s) on system: {:?}.",
                 found_target_models_on_system
             );
             Ok(())
         } else {
-            bail!(
-                "None of the target Ollama models ({:?}) were found. Available models on system: {:?}",
-                OLLAMA_TARGET_MODELS,
-                ollama_models_on_system
-            )
+            pull_ollama_models_parallel(difference.into_iter().collect::<Vec<String>>(), 5).await
+            // bail!(
+            //     "Not all of the target Ollama models ({:?}) were found. Available models on system: {:?}",
+            //     ollama_target_models,
+            //     ollama_models_on_system
+            // )
         }
     } else {
         bail!(
@@ -193,4 +213,41 @@ pub(crate) async fn check_ollama_api_and_model(http_client: &Client) -> Result<(
             response.status()
         )
     }
+}
+
+pub async fn pull_ollama_models_parallel(
+    models: impl IntoIterator<Item = String>,
+    concurrency: usize,
+) -> Result<()> {
+    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let mut join_set = JoinSet::new();
+
+    for model in models {
+        let permit = semaphore.clone().acquire_owned().await?;
+        join_set.spawn(async move {
+            let _permit = permit;
+            info!("   ⬇️ Pulling Ollama model: {}", model);
+
+            let status = Command::new("ollama")
+                .arg("pull")
+                .arg(&model)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .context(format!("Failed to execute `ollama pull {}`", model))?;
+
+            if status.success() {
+                info!("   Model `{}` pulled successfully", model);
+                Ok(())
+            } else {
+                anyhow::bail!("`ollama pull {}` failed with status: {}", model, status);
+            }
+        });
+    }
+
+    while let Some(res) = join_set.join_next().await {
+        res??;
+    }
+
+    Ok(())
 }

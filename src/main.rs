@@ -1,6 +1,6 @@
 use ai_goal::{
-    WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k, find_whisper_model,
-    summarize_file_with_ollama, transcribe_audio,
+    OllamaModelName, WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k,
+    find_whisper_model, summarize_file_with_ollama, transcribe_audio,
 };
 use anyhow::Result;
 use clap::Parser;
@@ -25,6 +25,9 @@ struct Cli {
     /// Whisper model to use
     #[arg(long = "wm",value_enum, default_value_t = WhiperModelName::Base)]
     whisper_model: WhiperModelName,
+    /// Ollama model to use
+    #[arg(long = "om",value_enum, default_value_t = OllamaModelName::Granite332b)]
+    ollama_model: OllamaModelName,
     /// Input file argument (required)
     input_file: String,
     /// Output folder to place output files (required)
