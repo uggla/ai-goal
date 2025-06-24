@@ -1,6 +1,7 @@
 // src/lib.rs
 
 mod checks;
+mod tokens;
 mod utils;
 
 use anyhow::{Context, Result, bail};
@@ -15,7 +16,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
-use tiktoken_rs::cl100k_base;
 use tracing::info;
 
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -23,6 +23,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::checks::{
     check_and_download_models, check_ffmpeg_availability, check_ollama_api_and_model,
 };
+use crate::tokens::Tokens;
 use crate::utils::{build_output, format_duration_hhmmss};
 
 // Define a struct for model information
@@ -411,22 +412,64 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         )
     })?;
 
-    let tokenizer = cl100k_base()?;
+    let tokens = Tokens::new(&content, max_tokens)?;
 
-    let tokens = tokenizer.encode_with_special_tokens(&content);
+    let mut summaries = ollama_partial_action(&model, root_dir, tokens).await?;
+
+    let final_summary = if summaries.len() == 1 {
+        summaries.remove(0)
+    } else {
+        let merged = summaries.join("\n");
+        let messages = vec![
+            ChatMessage::system("Tu es un assistant de résumé.".to_string()),
+            ChatMessage::user(format!(
+                "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global."
+            )),
+        ];
+
+        let options = ModelOptions::default().num_ctx(8192);
+
+        let mut history = Vec::new();
+        let mut client = Ollama::default();
+        let res = client
+            .send_chat_messages_with_history(
+                &mut history,
+                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
+            )
+            .await;
+
+        if let Ok(res) = res {
+            res.message.content.trim().to_string()
+        } else {
+            "".to_string()
+        }
+    };
+
+    fs::write(&output_final_summary.path, final_summary).with_context(|| {
+        format!(
+            "Failed to write summary to: {}",
+            output_final_summary.path.display()
+        )
+    })?;
+    Ok(output_final_summary.path)
+}
+
+async fn ollama_partial_action<P: AsRef<Path>>(
+    model: &OllamaModelInfo,
+    root_dir: P,
+    tokens: Tokens,
+) -> Result<Vec<String>> {
     let mut summaries = Vec::new();
-    let mut history = vec![];
-
+    let mut history = Vec::new();
     let mut client = Ollama::default();
-    for (index, chunk) in tokens.chunks(max_tokens).enumerate() {
-        let chunk_text = tokenizer.decode(chunk.to_vec())?;
 
+    for (index, chunk) in tokens.decoded_chunks().enumerate() {
         let messages = vec![
             ChatMessage::system(
                 "Tu es un assistant qui résume un texte dans sa langue d'origine et de manière consise.".to_string(),
             ),
             ChatMessage::user(format!(
-                "Voici un extrait de texte à résumer :\n{chunk_text}"
+                "Voici un extrait de texte à résumer :\n{}", chunk?
             )),
         ];
 
@@ -455,42 +498,5 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
             })?;
         }
     }
-
-    let final_summary = if summaries.len() == 1 {
-        summaries.remove(0)
-    } else {
-        let merged = summaries.join("\n");
-        let messages = vec![
-            ChatMessage::system("Tu es un assistant de résumé.".to_string()),
-            ChatMessage::user(format!(
-                "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global."
-            )),
-        ];
-
-        let options = ModelOptions::default().num_ctx(8192);
-
-        // Clean history to avoid influence from latest entry.
-        history.clear();
-
-        let res = client
-            .send_chat_messages_with_history(
-                &mut history,
-                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
-            )
-            .await;
-
-        if let Ok(res) = res {
-            res.message.content.trim().to_string()
-        } else {
-            "".to_string()
-        }
-    };
-
-    fs::write(&output_final_summary.path, final_summary).with_context(|| {
-        format!(
-            "Failed to write summary to: {}",
-            output_final_summary.path.display()
-        )
-    })?;
-    Ok(output_final_summary.path)
+    Ok(summaries)
 }
