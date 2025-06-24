@@ -36,6 +36,7 @@ pub enum Lang {
 pub enum WhiperModelName {
     Tiny,
     Base,
+    Small,
     Medium,
 }
 
@@ -44,6 +45,7 @@ impl From<WhiperModelName> for String {
         match value {
             WhiperModelName::Tiny => "tiny".to_string(),
             WhiperModelName::Base => "base".to_string(),
+            WhiperModelName::Small => "small".to_string(),
             WhiperModelName::Medium => "medium".to_string(),
         }
     }
@@ -56,7 +58,7 @@ struct WhisperModelInfo {
     url: &'static str,
 }
 
-const WHISPER_MODEL_FILES: [WhisperModelInfo; 3] = [
+const WHISPER_MODEL_FILES: [WhisperModelInfo; 4] = [
     WhisperModelInfo {
         name: WhiperModelName::Medium,
         filename: "ggml-medium.bin",
@@ -66,6 +68,11 @@ const WHISPER_MODEL_FILES: [WhisperModelInfo; 3] = [
         name: WhiperModelName::Base,
         filename: "ggml-base.bin",
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    },
+    WhisperModelInfo {
+        name: WhiperModelName::Small,
+        filename: "ggml-small.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
     },
     WhisperModelInfo {
         name: WhiperModelName::Tiny,
@@ -274,6 +281,9 @@ pub fn transcribe_audio<P: AsRef<Path>>(
         },
         "base" => whisper_rs::DtwMode::ModelPreset {
             model_preset: whisper_rs::DtwModelPreset::Base,
+        },
+        "small" => whisper_rs::DtwMode::ModelPreset {
+            model_preset: whisper_rs::DtwModelPreset::Small,
         },
         "medium" => whisper_rs::DtwMode::ModelPreset {
             model_preset: whisper_rs::DtwModelPreset::Medium,
