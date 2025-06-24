@@ -111,7 +111,7 @@ pub struct OllamaModelInfo {
     pub ctx_size: usize,
 }
 
-const OLLAMA_MODELS: [OllamaModelInfo; 3] = [
+const OLLAMA_MODELS: [OllamaModelInfo; 5] = [
     OllamaModelInfo {
         name: OllamaModelName::Mistral,
         ctx_size: 8192,
