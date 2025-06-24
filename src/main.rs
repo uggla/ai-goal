@@ -1,5 +1,5 @@
 use ai_goal::{
-    OllamaModelName, WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k,
+    Lang, OllamaModelName, WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k,
     find_ollama_model, find_whisper_model, summarize_file_with_ollama, transcribe_audio,
 };
 use anyhow::Result;
@@ -13,24 +13,27 @@ struct Cli {
     /// Optional flag to enable debug. -ddd = trace, -dd = debug, -d = info, 0 = error.
     #[arg(short = 'd', action = clap::ArgAction::Count)]
     debug: u8,
-    /// Output language for the transcription
-    #[arg(short = 'l', long = "lang")]
-    lang: Option<String>,
+    /// Translate audio to English.
+    #[arg(long = "translate")]
+    translate: bool,
     /// Number of thread to use for whisper. Default to number of cpu cores.
     #[arg(short = 't', long = "thread")]
     thread: Option<u8>,
-    /// Force recreate the output
+    /// Force recreate the output.
     #[arg(short = 'f', long = "force")]
     force: bool,
-    /// Whisper model to use
+    /// Whisper model to use.
     #[arg(long = "wm",value_enum, default_value_t = WhiperModelName::Base)]
     whisper_model: WhiperModelName,
-    /// Ollama model to use
+    /// Ollama model to use.
     #[arg(long = "om",value_enum, default_value_t = OllamaModelName::Granite332b)]
     ollama_model: OllamaModelName,
-    /// Input file argument (required)
+
+    /// Language of the source audio file.
+    lang: Lang,
+    /// Input file argument (required).
     input_file: String,
-    /// Output folder to place output files (required)
+    /// Output folder to place output files (required).
     output_dir: String,
 }
 
@@ -79,7 +82,7 @@ async fn main() -> Result<()> {
         model_path,
         &model_name,
         cli.thread,
-        cli.lang,
+        cli.translate,
         cli.force,
     ) {
         Ok(path) => {

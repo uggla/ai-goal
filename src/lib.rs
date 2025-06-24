@@ -26,7 +26,12 @@ use crate::checks::{
 use crate::tokens::Tokens;
 use crate::utils::{build_output, format_duration_hhmmss};
 
-// Define a struct for model information
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
+pub enum Lang {
+    En,
+    Fr,
+}
+
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 pub enum WhiperModelName {
     Tiny,
@@ -51,7 +56,6 @@ struct WhisperModelInfo {
     url: &'static str,
 }
 
-// Define model URLs and expected filenames using the struct
 const WHISPER_MODEL_FILES: [WhisperModelInfo; 3] = [
     WhisperModelInfo {
         name: WhiperModelName::Medium,
@@ -233,7 +237,7 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     model_path: P,
     model_name: &str,
     n_threads: Option<u8>,
-    language: Option<String>,
+    translate: bool,
     force: bool,
 ) -> Result<PathBuf> {
     const TRANSCRIPT_FILE: &str = "transcript.txt";
@@ -289,12 +293,15 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     // Edit params as needed.
     params.set_n_threads(n_threads.into());
     // Enable translation.
-    if language.is_some() {
+    if translate {
+        info!("Translating audio to en");
         params.set_translate(true);
+        params.set_language(Some("en"));
     } else {
+        info!("Do not translate audio");
         params.set_translate(false);
+        params.set_language(None);
     }
-    params.set_language(language.as_deref());
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);
