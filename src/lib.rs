@@ -477,7 +477,7 @@ pub async fn process_file_with_ollama<P: AsRef<Path>>(
         content.remove(0)
     } else {
         let content = content.join("\n");
-        ollama_final_action(model, &mut prompt, &content).await
+        ollama_final_action(model, &mut prompt, &content).await?
     };
 
     fs::write(&output_final_action.path, final_content).with_context(|| {
@@ -494,7 +494,7 @@ async fn ollama_final_action(
     model: OllamaModelInfo,
     prompt: &mut impl OllamaPromptProvider,
     content: &str,
-) -> String {
+) -> Result<String> {
     let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
     let mut history = Vec::new();
     let mut client = Ollama::default();
@@ -506,10 +506,9 @@ async fn ollama_final_action(
         )
         .await;
 
-    if let Ok(res) = res {
-        res.message.content.trim().to_string()
-    } else {
-        "".to_string()
+    match res {
+        Ok(res) => Ok(res.message.content.trim().to_string()),
+        Err(e) => bail!("Ollama fails with {e}"),
     }
 }
 
@@ -538,30 +537,33 @@ async fn ollama_partial_action<P: AsRef<Path>>(
             )
             .await;
 
-        if let Ok(res) = res {
-            let new_content = res.message.content.trim().to_string();
-            content.push(new_content.clone());
-            let output_partial_action = build_output(
-                root_dir,
-                &format!(
-                    "{}_{}",
-                    String::from(prompt.get_action()),
-                    String::from(&model.name)
-                ),
-                &format!(
-                    "partial_{}_{:02}_{:02}.txt",
-                    String::from(prompt.get_action()),
-                    pass,
-                    index
-                ),
-            )?;
-            fs::write(&output_partial_action.path, &new_content).with_context(|| {
-                format!(
-                    "Failed to write {} to: {}",
-                    String::from(prompt.get_action()),
-                    output_partial_action.path.display()
-                )
-            })?;
+        match res {
+            Ok(res) => {
+                let new_content = res.message.content.trim().to_string();
+                content.push(new_content.clone());
+                let output_partial_action = build_output(
+                    root_dir,
+                    &format!(
+                        "{}_{}",
+                        String::from(prompt.get_action()),
+                        String::from(&model.name)
+                    ),
+                    &format!(
+                        "partial_{}_{:02}_{:02}.txt",
+                        String::from(prompt.get_action()),
+                        pass,
+                        index
+                    ),
+                )?;
+                fs::write(&output_partial_action.path, &new_content).with_context(|| {
+                    format!(
+                        "Failed to write {} to: {}",
+                        String::from(prompt.get_action()),
+                        output_partial_action.path.display()
+                    )
+                })?;
+            }
+            Err(e) => bail!("Ollama fails with {e}"),
         }
     }
     Ok(content)
