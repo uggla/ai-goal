@@ -1,6 +1,7 @@
 // src/lib.rs
 
 mod checks;
+mod prompts;
 mod tokens;
 mod utils;
 
@@ -429,40 +430,24 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         )
     })?;
 
-    let tokens = Tokens::new(&content, max_tokens)?;
+    let mut tokens = Tokens::new(&content, max_tokens)?;
+    let mut pass: u32 = 0;
 
-    let mut summaries = ollama_partial_action(&model, root_dir, tokens).await?;
+    let mut content = Vec::new();
+    while tokens.exceed_max() {
+        content = ollama_partial_action(&model, &root_dir, &tokens, pass).await?;
+        tokens = Tokens::new(&content.join("\n"), max_tokens)?;
+        pass += 1;
+    }
 
-    let final_summary = if summaries.len() == 1 {
-        summaries.remove(0)
+    let final_content = if content.len() == 1 {
+        content.remove(0)
     } else {
-        let merged = summaries.join("\n");
-        let messages = vec![
-            ChatMessage::system("Tu es un assistant de résumé.".to_string()),
-            ChatMessage::user(format!(
-                "Voici plusieurs résumés partiels :\n{merged}\nFais un résumé global."
-            )),
-        ];
-
-        let options = ModelOptions::default().num_ctx(8192);
-
-        let mut history = Vec::new();
-        let mut client = Ollama::default();
-        let res = client
-            .send_chat_messages_with_history(
-                &mut history,
-                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
-            )
-            .await;
-
-        if let Ok(res) = res {
-            res.message.content.trim().to_string()
-        } else {
-            "".to_string()
-        }
+        let content = content.join("\n");
+        ollama_final_action(model, &content).await
     };
 
-    fs::write(&output_final_summary.path, final_summary).with_context(|| {
+    fs::write(&output_final_summary.path, final_content).with_context(|| {
         format!(
             "Failed to write summary to: {}",
             output_final_summary.path.display()
@@ -471,10 +456,36 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
     Ok(output_final_summary.path)
 }
 
+async fn ollama_final_action(model: OllamaModelInfo, content: &str) -> String {
+    let messages = vec![
+        ChatMessage::system("Tu es un assistant de résumé.".to_string()),
+        ChatMessage::user(format!(
+            "Voici plusieurs résumés partiels :\n{content}\nFais un résumé global."
+        )),
+    ];
+
+    let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
+    let mut history = Vec::new();
+    let mut client = Ollama::default();
+    let res = client
+        .send_chat_messages_with_history(
+            &mut history,
+            ChatMessageRequest::new(String::from(&model.name), messages).options(options),
+        )
+        .await;
+
+    if let Ok(res) = res {
+        res.message.content.trim().to_string()
+    } else {
+        "".to_string()
+    }
+}
+
 async fn ollama_partial_action<P: AsRef<Path>>(
     model: &OllamaModelInfo,
-    root_dir: P,
-    tokens: Tokens,
+    root_dir: &P,
+    tokens: &Tokens,
+    pass: u32,
 ) -> Result<Vec<String>> {
     let mut summaries = Vec::new();
     let mut history = Vec::new();
@@ -490,7 +501,7 @@ async fn ollama_partial_action<P: AsRef<Path>>(
             )),
         ];
 
-        let options = ModelOptions::default().num_ctx(8192);
+        let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
 
         let res = client
             .send_chat_messages_with_history(
@@ -503,9 +514,9 @@ async fn ollama_partial_action<P: AsRef<Path>>(
             let content = res.message.content.trim().to_string();
             summaries.push(content.clone());
             let output_partial_summary = build_output(
-                &root_dir,
+                root_dir,
                 &format!("summary_{}", String::from(&model.name)),
-                &format!("partial_summary_{}.txt", index),
+                &format!("partial_summary_{:02}_{:02}.txt", pass, index),
             )?;
             fs::write(&output_partial_summary.path, &content).with_context(|| {
                 format!(
