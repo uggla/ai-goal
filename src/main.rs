@@ -1,6 +1,7 @@
 use ai_goal::{
-    Lang, OllamaModelName, WhiperModelName, check_all_system_requirements, convert_to_wav_mono_16k,
-    find_ollama_model, find_whisper_model, summarize_file_with_ollama, transcribe_audio,
+    Lang, OllamaAction, OllamaModelName, WhiperModelName, build_prompt,
+    check_all_system_requirements, convert_to_wav_mono_16k, find_ollama_model, find_whisper_model,
+    process_file_with_ollama, transcribe_audio,
 };
 use anyhow::Result;
 use clap::Parser;
@@ -31,6 +32,8 @@ struct Cli {
 
     /// Language of the source audio file.
     lang: Lang,
+    /// Action to do
+    action: OllamaAction,
     /// Input file argument (required).
     input_file: String,
     /// Output folder to place output files (required).
@@ -95,15 +98,22 @@ async fn main() -> Result<()> {
         }
     };
 
-    let _summary = match summarize_file_with_ollama(
+    let prompt = build_prompt(cli.action, cli.lang);
+
+    let _summary = match process_file_with_ollama(
         find_ollama_model(cli.ollama_model),
+        prompt,
         transcript_path,
         PathBuf::from(&cli.output_dir),
     )
     .await
     {
         Ok(path) => {
-            info!("✅ Summary saved to \"{}\".", path.display());
+            info!(
+                "✅ Result of action {} saved to \"{}\".",
+                String::from(cli.action),
+                path.display()
+            );
             path
         }
         Err(e) => {

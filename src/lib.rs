@@ -8,7 +8,6 @@ mod utils;
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use ollama_rs::Ollama;
-use ollama_rs::generation::chat::ChatMessage;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
 use ollama_rs::models::ModelOptions;
 use reqwest::Client;
@@ -24,13 +23,31 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::checks::{
     check_and_download_models, check_ffmpeg_availability, check_ollama_api_and_model,
 };
+use crate::prompts::{OllamaPromptProvider, SummaryPrompt};
 use crate::tokens::Tokens;
 use crate::utils::{build_output, format_duration_hhmmss};
 
-#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, ValueEnum, Eq, PartialEq)]
 pub enum Lang {
     En,
     Fr,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, Eq, PartialEq)]
+pub enum OllamaAction {
+    Summary,
+    CreateChapters,
+    Translate,
+}
+
+impl From<OllamaAction> for String {
+    fn from(value: OllamaAction) -> Self {
+        match value {
+            OllamaAction::Summary => "summary".to_string(),
+            OllamaAction::CreateChapters => "create_chapters".to_string(),
+            OllamaAction::Translate => "translate".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
@@ -405,20 +422,36 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     Ok(transcript_path)
 }
 
-pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
+pub fn build_prompt(action: OllamaAction, lang: Lang) -> impl OllamaPromptProvider {
+    match action {
+        OllamaAction::Summary => SummaryPrompt::new(lang),
+        OllamaAction::Translate => unimplemented!(),
+        OllamaAction::CreateChapters => unimplemented!(),
+    }
+}
+
+pub async fn process_file_with_ollama<P: AsRef<Path>>(
     model: OllamaModelInfo,
+    mut prompt: impl OllamaPromptProvider,
     transcript_path: P,
     root_dir: P,
 ) -> Result<PathBuf> {
-    const SUMMARY_FILE: &str = "summary.txt";
     let transcript_path = transcript_path.as_ref();
 
-    info!("Summarize file with {} model.", String::from(&model.name));
+    info!(
+        "Perform action {} on file with {} model.",
+        String::from(prompt.get_action()),
+        String::from(&model.name)
+    );
 
-    let output_final_summary = build_output(
+    let output_final_action = build_output(
         &root_dir,
-        &format!("summary_{}", String::from(&model.name)),
-        SUMMARY_FILE,
+        &format!(
+            "{}_{}",
+            String::from(prompt.get_action()),
+            String::from(&model.name)
+        ),
+        &format!("{}.txt", String::from(prompt.get_action())),
     )?;
 
     let max_tokens: usize = model.ctx_size / 2;
@@ -435,7 +468,7 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
 
     let mut content = Vec::new();
     while tokens.exceed_max() {
-        content = ollama_partial_action(&model, &root_dir, &tokens, pass).await?;
+        content = ollama_partial_action(&model, &mut prompt, &root_dir, &tokens, pass).await?;
         tokens = Tokens::new(&content.join("\n"), max_tokens)?;
         pass += 1;
     }
@@ -444,33 +477,32 @@ pub async fn summarize_file_with_ollama<P: AsRef<Path>>(
         content.remove(0)
     } else {
         let content = content.join("\n");
-        ollama_final_action(model, &content).await
+        ollama_final_action(model, &mut prompt, &content).await
     };
 
-    fs::write(&output_final_summary.path, final_content).with_context(|| {
+    fs::write(&output_final_action.path, final_content).with_context(|| {
         format!(
-            "Failed to write summary to: {}",
-            output_final_summary.path.display()
+            "Failed to write {} to: {}",
+            String::from(prompt.get_action()),
+            output_final_action.path.display()
         )
     })?;
-    Ok(output_final_summary.path)
+    Ok(output_final_action.path)
 }
 
-async fn ollama_final_action(model: OllamaModelInfo, content: &str) -> String {
-    let messages = vec![
-        ChatMessage::system("Tu es un assistant de résumé.".to_string()),
-        ChatMessage::user(format!(
-            "Voici plusieurs résumés partiels :\n{content}\nFais un résumé global."
-        )),
-    ];
-
+async fn ollama_final_action(
+    model: OllamaModelInfo,
+    prompt: &mut impl OllamaPromptProvider,
+    content: &str,
+) -> String {
     let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
     let mut history = Vec::new();
     let mut client = Ollama::default();
     let res = client
         .send_chat_messages_with_history(
             &mut history,
-            ChatMessageRequest::new(String::from(&model.name), messages).options(options),
+            ChatMessageRequest::new(String::from(&model.name), prompt.get_final_prompt(content))
+                .options(options),
         )
         .await;
 
@@ -483,48 +515,54 @@ async fn ollama_final_action(model: OllamaModelInfo, content: &str) -> String {
 
 async fn ollama_partial_action<P: AsRef<Path>>(
     model: &OllamaModelInfo,
+    prompt: &mut impl OllamaPromptProvider,
     root_dir: &P,
     tokens: &Tokens,
     pass: u32,
 ) -> Result<Vec<String>> {
-    let mut summaries = Vec::new();
+    let mut content = Vec::new();
     let mut history = Vec::new();
     let mut client = Ollama::default();
 
     for (index, chunk) in tokens.decoded_chunks().enumerate() {
-        let messages = vec![
-            ChatMessage::system(
-                "Tu es un assistant qui résume un texte dans sa langue d'origine et de manière consise.".to_string(),
-            ),
-            ChatMessage::user(format!(
-                "Voici un extrait de texte à résumer :\n{}", chunk?
-            )),
-        ];
-
         let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
 
         let res = client
             .send_chat_messages_with_history(
                 &mut history,
-                ChatMessageRequest::new(String::from(&model.name), messages).options(options),
+                ChatMessageRequest::new(
+                    String::from(&model.name),
+                    prompt.get_partial_prompt(&chunk?),
+                )
+                .options(options),
             )
             .await;
 
         if let Ok(res) = res {
-            let content = res.message.content.trim().to_string();
-            summaries.push(content.clone());
-            let output_partial_summary = build_output(
+            let new_content = res.message.content.trim().to_string();
+            content.push(new_content.clone());
+            let output_partial_action = build_output(
                 root_dir,
-                &format!("summary_{}", String::from(&model.name)),
-                &format!("partial_summary_{:02}_{:02}.txt", pass, index),
+                &format!(
+                    "{}_{}",
+                    String::from(prompt.get_action()),
+                    String::from(&model.name)
+                ),
+                &format!(
+                    "partial_{}_{:02}_{:02}.txt",
+                    String::from(prompt.get_action()),
+                    pass,
+                    index
+                ),
             )?;
-            fs::write(&output_partial_summary.path, &content).with_context(|| {
+            fs::write(&output_partial_action.path, &new_content).with_context(|| {
                 format!(
-                    "Failed to write summary to: {}",
-                    output_partial_summary.path.display()
+                    "Failed to write {} to: {}",
+                    String::from(prompt.get_action()),
+                    output_partial_action.path.display()
                 )
             })?;
         }
     }
-    Ok(summaries)
+    Ok(content)
 }
