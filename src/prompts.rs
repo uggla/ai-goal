@@ -188,7 +188,7 @@ Here is the content:\n{{content}}"
                 ];
 
                 Self {
-                    action: OllamaAction::Summary,
+                    action: OllamaAction::CreateChapters,
                     lang,
                     partial_prompt,
                     final_prompt,
