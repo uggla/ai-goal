@@ -23,7 +23,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::checks::{
     check_and_download_models, check_ffmpeg_availability, check_ollama_api_and_model,
 };
-use crate::prompts::{OllamaPromptProvider, SummaryPrompt};
+use crate::prompts::{CreateChapterPrompt, OllamaPromptProvider, SummaryPrompt};
 use crate::tokens::Tokens;
 use crate::utils::{build_output, format_duration_hhmmss};
 
@@ -37,7 +37,7 @@ pub enum Lang {
 pub enum OllamaAction {
     Summary,
     CreateChapters,
-    Translate,
+    // Translate,
 }
 
 impl From<OllamaAction> for String {
@@ -45,7 +45,7 @@ impl From<OllamaAction> for String {
         match value {
             OllamaAction::Summary => "summary".to_string(),
             OllamaAction::CreateChapters => "create_chapters".to_string(),
-            OllamaAction::Translate => "translate".to_string(),
+            // OllamaAction::Translate => "translate".to_string(),
         }
     }
 }
@@ -422,17 +422,17 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     Ok(transcript_path)
 }
 
-pub fn build_prompt(action: OllamaAction, lang: Lang) -> impl OllamaPromptProvider {
+pub fn build_prompt(action: OllamaAction, lang: Lang) -> Box<dyn OllamaPromptProvider> {
     match action {
-        OllamaAction::Summary => SummaryPrompt::new(lang),
-        OllamaAction::Translate => unimplemented!(),
-        OllamaAction::CreateChapters => unimplemented!(),
+        OllamaAction::Summary => Box::new(SummaryPrompt::new(lang)),
+        OllamaAction::CreateChapters => Box::new(CreateChapterPrompt::new(lang)),
+        // OllamaAction::Translate => unimplemented!(),
     }
 }
 
 pub async fn process_file_with_ollama<P: AsRef<Path>>(
     model: OllamaModelInfo,
-    mut prompt: impl OllamaPromptProvider,
+    mut prompt: Box<dyn OllamaPromptProvider>,
     transcript_path: P,
     root_dir: P,
 ) -> Result<PathBuf> {
@@ -492,7 +492,7 @@ pub async fn process_file_with_ollama<P: AsRef<Path>>(
 
 async fn ollama_final_action(
     model: OllamaModelInfo,
-    prompt: &mut impl OllamaPromptProvider,
+    prompt: &mut Box<dyn OllamaPromptProvider>,
     content: &str,
 ) -> Result<String> {
     let options = ModelOptions::default().num_ctx(model.ctx_size as u64);
@@ -514,7 +514,7 @@ async fn ollama_final_action(
 
 async fn ollama_partial_action<P: AsRef<Path>>(
     model: &OllamaModelInfo,
-    prompt: &mut impl OllamaPromptProvider,
+    prompt: &mut Box<dyn OllamaPromptProvider>,
     root_dir: &P,
     tokens: &Tokens,
     pass: u32,
