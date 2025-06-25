@@ -98,7 +98,11 @@ async fn main() -> Result<()> {
         }
     };
 
-    let prompt = build_prompt(cli.action, cli.lang);
+    let prompt = if cli.translate {
+        build_prompt(cli.action, Lang::En)
+    } else {
+        build_prompt(cli.action, cli.lang)
+    };
 
     let _summary = match process_file_with_ollama(
         find_ollama_model(cli.ollama_model),
