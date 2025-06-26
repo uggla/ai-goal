@@ -49,7 +49,7 @@ To build and run ai-goal, you need the Rust toolchain installed, you can
 find the installation instructions on the [Rust programming language official
 site](https://www.rust-lang.org/).
 
-Whisper.cpp is a required external dependency.
+ffmpeg and ollama are required external dependencies.
 
 ### Clone the Repository
 
@@ -60,7 +60,9 @@ git clone https://github.com/uggla/ai-goal.git
 cd ai-goal
 ```
 
-### Install whisper.cpp
+### Install dependencies
+
+#### 1- Install build dependencies
 
 **For Fedora (using dnf):**
 
@@ -75,9 +77,37 @@ sudo apt-get update
 sudo apt-get install gcc libssl-dev pkg-config clang cmake
 ```
 
-_(Note: If whisper.cpp is not directly available via your package manager,
-you might need to build it from source. Refer to the official whisper.cpp
-repository for detailed build instructions.)_
+#### 2- Install ffmpeg
+
+**For Fedora (using dnf):**
+
+```bash
+sudo dnf install ffmpeg
+```
+
+**For Ubuntu/Debian (using apt):**
+
+```bash
+sudo apt-get install ffmpeg
+```
+
+#### 3- Install ollama
+
+**For Fedora 42 (using dnf):**
+
+```bash
+sudo dnf install ollama
+```
+
+**For Fedora < 42 and Ubuntu/Debian:**
+
+No packages seem available for ollama, You can find installation instructions on the official [Ollama website](https://github.com/ollama/ollama).
+
+However, on most Linux systems, you can install it manually using:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
 
 ### Build the ai-goal Project
 
@@ -141,7 +171,7 @@ output/algo_faster/
 - summary_granite3.3:latest/: Contains the generated summary and any partial summaries.
 - transcript_small/: Contains the full transcription.
 
-Tool output example:
+Tool console output example:
 
 ```bash
  🦉 rribaud   main  ~  workspace  rust  ai-goal  time taskset -c 0-3 cargo run -r --  -t 4 en summary ./video/algo_faster.webm output/algo_faster --wm small
