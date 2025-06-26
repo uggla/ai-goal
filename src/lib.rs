@@ -478,17 +478,24 @@ pub async fn process_file_with_ollama<P: AsRef<Path>>(
     let mut tokens = Tokens::new(&content, max_tokens)?;
     let mut pass: u32 = 0;
 
-    let mut content = Vec::new();
+    let mut new_content = Vec::new();
     while tokens.exceed_max() {
-        content = ollama_partial_action(&model, &mut prompt, &root_dir, &tokens, pass).await?;
-        tokens = Tokens::new(&content.join("\n"), max_tokens)?;
+        new_content = ollama_partial_action(&model, &mut prompt, &root_dir, &tokens, pass).await?;
+        tokens = Tokens::new(&new_content.join("\n"), max_tokens)?;
         pass += 1;
     }
 
-    let final_content = if content.len() == 1 {
-        content.remove(0)
+    let final_content = if new_content.len() == 1 && pass > 0 {
+        // We have done partial action, but we only have one
+        new_content.remove(0)
     } else {
-        let content = content.join("\n");
+        let content = if pass > 0 {
+            // We have done partial action, and we have many ones.
+            new_content.join("\n")
+        } else {
+            // We have not done partial action, because the content is less than max_tokens
+            content
+        };
         ollama_final_action(model, &mut prompt, &content).await?
     };
 
