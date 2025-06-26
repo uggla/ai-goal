@@ -65,14 +65,14 @@ cd ai-goal
 **For Fedora (using dnf):**
 
 ```bash
-sudo dnf install whisper.cpp
+sudo dnf install openssl-devel gcc clang cmake
 ```
 
 **For Ubuntu/Debian (using apt):**
 
 ```bash
 sudo apt-get update
-sudo apt-get install whisper.cpp
+sudo apt-get install gcc libssl-dev pkg-config clang cmake
 ```
 
 _(Note: If whisper.cpp is not directly available via your package manager,
@@ -140,6 +140,37 @@ output/algo_faster/
 - audio/: Contains the extracted and pre-processed audio file.
 - summary_granite3.3:latest/: Contains the generated summary and any partial summaries.
 - transcript_small/: Contains the full transcription.
+
+Tool output example:
+
+```bash
+ 🦉 rribaud   main  ~  workspace  rust  ai-goal  time taskset -c 0-3 cargo run -r --  -t 4 en summary ./video/algo_faster.webm output/algo_faster --wm small
+   Compiling ai-goal v0.1.0 (/home/rribaud/workspace/rust/ai-goal)
+    Finished `release` profile [optimized] target(s) in 7.71s
+     Running `target/release/ai-goal -t 4 en summary ./video/algo_faster.webm output/algo_faster --wm small`
+2025-06-25T14:56:05.916677Z  INFO ai_goal: 🚀 Starting ai-goal version: 0.1.0
+2025-06-25T14:56:05.916695Z  INFO ai_goal: Checking system prerequisites.
+2025-06-25T14:56:05.916697Z  INFO ai_goal::checks: 1. Checking for ffmpeg...
+2025-06-25T14:56:06.019656Z  INFO ai_goal::checks:    ffmpeg found.
+2025-06-25T14:56:06.032935Z  INFO ai_goal::checks: 2. Checking Whisper models...
+2025-06-25T14:56:06.032959Z  INFO ai_goal::checks:    Model 'ggml-medium.bin' found.
+2025-06-25T14:56:06.032967Z  INFO ai_goal::checks:    Model 'ggml-base.bin' found.
+2025-06-25T14:56:06.032969Z  INFO ai_goal::checks:    Model 'ggml-small.bin' found.
+2025-06-25T14:56:06.032973Z  INFO ai_goal::checks:    Model 'ggml-tiny.bin' found.
+2025-06-25T14:56:06.032985Z  INFO ai_goal::checks: 3. Checking Ollama API and target models: {"llama3", "granite3.3:2b", "gemma", "granite3.3:latest", "mistral"}...
+2025-06-25T14:56:06.034781Z  INFO ai_goal::checks:    Ollama API is responsive.
+2025-06-25T14:56:06.034823Z  INFO ai_goal::checks:    Found target Ollama model(s) on system: {"granite3.3:latest", "llama3", "granite3.3:2b", "gemma", "mistral"}.
+2025-06-25T14:56:06.035220Z  INFO ai_goal: ✅ All prerequisites are met.
+2025-06-25T14:56:06.035225Z  INFO ai_goal: Convert audio file to meet whisper requirements.
+2025-06-25T14:56:06.035261Z  INFO ai_goal: ⏭️ Skipping output/algo_faster/audio/algo_faster_mono16k.wav already exists.
+2025-06-25T14:56:06.035263Z  INFO ai_goal: ✅ Audio file converted : "output/algo_faster/audio/algo_faster_mono16k.wav".
+2025-06-25T14:56:06.035603Z  INFO ai_goal: Transcribe audio file using 4 threads and model small.
+2025-06-25T14:56:06.035613Z  INFO ai_goal: ⏭️ Skipping output/algo_faster/transcript_small/transcript.txt already exists.
+2025-06-25T14:56:06.035615Z  INFO ai_goal: ✅ Transcript saved to "output/algo_faster/transcript_small/transcript.txt".
+2025-06-25T14:56:06.035618Z  INFO ai_goal: Perform action summary on file with granite3.3:2b model.
+2025-06-25T17:27:18.018711Z  INFO ai_goal: ✅ Result of action summary saved to "output/algo_faster/summary_granite3.3:2b/summary.txt".
+2025-06-25T17:27:18.018729Z  INFO ai_goal: ✅ ai-goal completes successfully
+```
 
 ## **Known Issues & Future Improvements**
 
