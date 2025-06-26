@@ -86,6 +86,7 @@ async fn main() -> Result<()> {
         &model_name,
         cli.thread,
         cli.translate,
+        cli.lang,
         cli.force,
     ) {
         Ok(path) => {

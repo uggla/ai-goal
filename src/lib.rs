@@ -33,6 +33,15 @@ pub enum Lang {
     Fr,
 }
 
+impl From<Lang> for String {
+    fn from(value: Lang) -> Self {
+        match value {
+            Lang::Fr => "fr".to_string(),
+            Lang::En => "en".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum, Eq, PartialEq)]
 pub enum OllamaAction {
     Summary,
@@ -256,6 +265,7 @@ pub fn convert_to_wav_mono_16k<P: AsRef<Path>>(
     Ok(output.path)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn transcribe_audio<P: AsRef<Path>>(
     audio_path: P,
     root_dir: P,
@@ -263,9 +273,11 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     model_name: &str,
     n_threads: Option<u8>,
     translate: bool,
+    lang: Lang,
     force: bool,
 ) -> Result<PathBuf> {
     const TRANSCRIPT_FILE: &str = "transcript.txt";
+    let lang = String::from(lang);
 
     let model_path = match model_path.as_ref().to_str() {
         Some(path) => path,
@@ -328,7 +340,7 @@ pub fn transcribe_audio<P: AsRef<Path>>(
     } else {
         info!("Do not translate audio");
         params.set_translate(false);
-        params.set_language(None);
+        params.set_language(Some(&lang));
     }
     params.set_print_special(false);
     params.set_print_progress(false);
