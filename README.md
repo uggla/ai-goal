@@ -24,6 +24,9 @@ The code acts as a "plumbing" layer, orchestrating the execution of
 transcription and language model tasks in the correct sequence. It currently
 lacks comprehensive testing and may benefit from further refactoring.
 
+> [!NOTE]
+> I have done a vidéo to present it [here](https://www.youtube.com/watch?v=qoUpO7PccHM)
+
 ## Features
 
 ai-goal currently supports the following operations:
